@@ -12,6 +12,7 @@ const reviewRoutes = require("./routes/review.routes");
 const userRoutes = require("./routes/user.routes");
 const adminRoutes = require("./routes/admin.routes");
 const seriesRoutes = require("./routes/series.routes");   // ← جديد
+const searchRoutes = require("./routes/search.routes");
 
 const { errorHandler, notFound } = require("./middlewares/error.middleware");
 
@@ -73,6 +74,7 @@ app.use("/api/books/:id/reviews", reviewRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/users",      userRoutes);
 app.use("/api/series",     seriesRoutes);  
+app.use("/api/search", searchRoutes);
 
 // ─── Static Files
 app.use("/uploads", express.static("uploads"));

@@ -17,18 +17,15 @@ exports.createBook = async (req, res, next) => {
             return res.status(400).json({ success: false, message: "صورة الغلاف مطلوبة (coverImage)" });
         }
 
-       
-        const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories]: [];
+        const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories] : [];
 
         const bookFile  = req.files.bookFile[0];
         const coverFile = req.files.coverImage[0];
 
-        // ─── اسم الملف النظيف
         const bookExt        = bookFile.originalname.split('.').pop();
         const cleanBookName  = `${title}.${bookExt}`;
         const cleanCoverName = `${title}-cover.jpg`;
 
-        // ─── ضغط الغلاف
         let coverBuffer = coverFile.buffer;
         try {
             const sharp = require("sharp");
@@ -40,7 +37,6 @@ exports.createBook = async (req, res, next) => {
             coverBuffer = coverFile.buffer;
         }
 
-        // ─── رفع متوازٍ
         const [bookDrive, coverDrive] = await Promise.all([
             uploadToDrive({
                 buffer:       bookFile.buffer,
@@ -59,7 +55,6 @@ exports.createBook = async (req, res, next) => {
         uploadedBookId  = bookDrive.fileId;
         uploadedCoverId = coverDrive.fileId;
 
-        // ─── حفظ في MongoDB
         const newBook = await Book.create({
             title,
             author,
@@ -88,52 +83,14 @@ exports.createBook = async (req, res, next) => {
     }
 };
 
-// ─── عرض كل الكتب
+// ─── عرض كل الكتب (فلترة فقط — البحث انتقل لـ search.controller.js)
 exports.getAllBook = async (req, res) => {
     try {
         const page  = parseInt(req.query.page)  || 1;
         const limit = parseInt(req.query.limit) || 12;
         const skip  = (page - 1) * limit;
 
-        const { search, category, format, sort, mine, createdBy, series } = req.query;
-
-        let pipeline = [];
-
-        if (search) {
-            pipeline.push({
-                $search: {
-                    index: "default",
-                    compound: {
-                        should: [
-                            {
-                                text: {
-                                    query: search,
-                                    path: "title",
-                                    score: { boost: { value: 10 } },
-                                    fuzzy: { maxEdits: 1, prefixLength: 3 },
-                                },
-                            },
-                            {
-                                text: {
-                                    query: search,
-                                    path: "author",
-                                    score: { boost: { value: 6 } },
-                                    fuzzy: { maxEdits: 1, prefixLength: 3 },
-                                },
-                            },
-                            {
-                                text: {
-                                    query: search,
-                                    path: "description",
-                                    score: { boost: { value: 1 } },
-                                },
-                            },
-                        ],
-                        minimumShouldMatch: 1,
-                    },
-                },
-            });
-        }
+        const { category, format, sort, mine, createdBy, series } = req.query;
 
         const matchStage = {};
         if (category)  matchStage.categories = new mongoose.Types.ObjectId(category);
@@ -145,36 +102,32 @@ exports.getAllBook = async (req, res) => {
             matchStage.createdBy = req.user._id;
         }
 
-        if (Object.keys(matchStage).length > 0) {
-            pipeline.push({ $match: matchStage });
-        }
-
         const sortOptions = {
             newest:    { createdAt: -1 },
             downloads: { downloadCount: -1 },
             title:     { title: 1 },
         };
-        const sortBy = search
-            ? { score: { $meta: "searchScore" } }
-            : (sortOptions[sort] || sortOptions.newest);
+        const sortBy = sortOptions[sort] || sortOptions.newest;
 
-        pipeline.push({ $sort: sortBy });
-
-        pipeline.push({
-            $facet: {
-                metadata: [{ $count: "total" }],
-                data: [
-                    { $skip: skip },
-                    { $limit: limit },
-                    { $lookup: { from: "categories", localField: "categories", foreignField: "_id", as: "categories" } },
-                    { $lookup: { from: "series",     localField: "series",     foreignField: "_id", as: "seriesData" } },
-                    { $unwind: { path: "$seriesData", preserveNullAndEmptyArrays: true } },
-                    { $lookup: { from: "users",      localField: "createdBy",  foreignField: "_id", as: "createdBy" } },
-                    { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
-                    { $project: { "createdBy.password": 0, "createdBy.refreshToken": 0, "createdBy.resetOtp": 0 } },
-                ],
+        const pipeline = [
+            ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
+            { $sort: sortBy },
+            {
+                $facet: {
+                    metadata: [{ $count: "total" }],
+                    data: [
+                        { $skip: skip },
+                        { $limit: limit },
+                        { $lookup: { from: "categories", localField: "categories", foreignField: "_id", as: "categories" } },
+                        { $lookup: { from: "series",     localField: "series",     foreignField: "_id", as: "seriesData" } },
+                        { $unwind: { path: "$seriesData", preserveNullAndEmptyArrays: true } },
+                        { $lookup: { from: "users",      localField: "createdBy",  foreignField: "_id", as: "createdBy" } },
+                        { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+                        { $project: { "createdBy.password": 0, "createdBy.refreshToken": 0, "createdBy.resetOtp": 0 } },
+                    ],
+                },
             },
-        });
+        ];
 
         const results = await Book.aggregate(pipeline);
         const books   = results[0]?.data || [];
@@ -187,10 +140,7 @@ exports.getAllBook = async (req, res) => {
         });
     } catch (error) {
         console.error("[getAllBook] Error:", error);
-        const userMessage = error.message.includes("$search")
-            ? "نظام البحث الذكي قيد التجهيز حالياً، يرجى المحاولة بعد قليل."
-            : "عذراً، حدث خطأ أثناء جلب الكتب.";
-        res.status(500).json({ success: false, message: userMessage, error: error.message });
+        res.status(500).json({ success: false, message: "عذراً، حدث خطأ أثناء جلب الكتب." });
     }
 };
 
@@ -209,7 +159,6 @@ exports.updateBook = async (req, res, next) => {
 
         const { fileUrl, coverImage, driveFileId, driveCoverId, ...safeFields } = req.body;
 
-        // ─── تأكد categories يكون array
         if (safeFields.categories && !Array.isArray(safeFields.categories)) {
             safeFields.categories = [safeFields.categories];
         }
