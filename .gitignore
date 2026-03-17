@@ -1,0 +1,7 @@
+node_modules
+.env 
+/logs
+/uploads
+/src/config/service-account.json
+/src/get-token.js
+/src/seedBooks.js
