@@ -10,5 +10,6 @@ router.get("/stats", authMiddleware, roleMiddleware(["admin", "superadmin"]), ad
 router.get("/users",            authMiddleware, roleMiddleware("superadmin"), adminCtrl.getAllUsers);
 router.delete("/users/:id",     authMiddleware, roleMiddleware("superadmin"), adminCtrl.deleteUser);
 router.put("/users/:id/role",   authMiddleware, roleMiddleware("superadmin"), adminCtrl.updateUserRole);
+router.post("/create-user", authMiddleware, roleMiddleware("superadmin"), adminCtrl.createUser);
 
 module.exports = router;

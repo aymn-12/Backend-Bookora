@@ -134,3 +134,44 @@ exports.updateUserRole = async (req, res, next) => {
         });
     } catch (error) { next(error); }
 };
+
+// ─── إنشاء مستخدم جديد (Superadmin فقط)
+exports.createUser = async (req, res, next) => {
+    try {
+        const { email, password, role } = req.body;
+
+        if (!["user", "admin"].includes(role)) {
+            return res.status(400).json({ message: "الدور غير صالح" });
+        }
+
+        const exists = await User.findOne({ email });
+        if (exists) {
+            return res.status(400).json({ message: "البريد الإلكتروني مستخدم مسبقاً" });
+        }
+
+        const bcrypt = require("bcrypt");
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const generatedName = "BKR-" + Math.floor(100000 + Math.random() * 900000).toString();
+
+        const user = await User.create({
+            name: generatedName,
+            email,
+            password: hashedPassword,
+            role,
+            isVerified: true,
+            savedBooks: [],
+            downloadedBooks: [],
+            attempts: 0,
+        });
+
+        res.status(201).json({
+            success: true,
+            data: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+            },
+        });
+    } catch (error) { next(error); }
+};
