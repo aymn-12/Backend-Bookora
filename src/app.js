@@ -77,10 +77,9 @@ app.use("/api/series",     seriesRoutes);
 // ─── Static Files
 app.use("/uploads", express.static("uploads"));
 
-app.get("/api/auth/google/callback", (req, res) => {
+/*app.get("/api/auth/google/callback", (req, res) => {
     res.json({ code: req.query.code });
-});
-
+});*/ 
 app.use(notFound);
 app.use(errorHandler);
 
