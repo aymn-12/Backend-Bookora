@@ -65,9 +65,9 @@ exports.globalSearch = async (req, res) => {
                         },
                     },
                 },
-                // ─── احذف النتائج الضعيفة
-                { $match: { $expr: { $gt: [{ $meta: "searchScore" }, 1.5] } } },
-                { $limit: 8 },
+                // ─── احذف النتائج الضعيفة جداً فقط أو اتركها للترتيب
+                { $match: { $expr: { $gt: [{ $meta: "searchScore" }, 0.1] } } },
+                { $limit: 12 },
                 { $lookup: { from: "categories", localField: "categories", foreignField: "_id", as: "categories" } },
                 { $lookup: { from: "series", localField: "series", foreignField: "_id", as: "seriesData" } },
                 { $unwind: { path: "$seriesData", preserveNullAndEmptyArrays: true } },
@@ -113,13 +113,8 @@ exports.globalSearch = async (req, res) => {
 
     } catch (error) {
         console.error("[globalSearch]", error.message);
-
-        // ─── Fallback لو Atlas Search معطل
-        if (error.message.includes("$search")) {
-            return fallbackSearch(req, res);
-        }
-
-        res.status(500).json({ success: false, message: "حدث خطأ في البحث" });
+        // Fallback لو Atlas Search معطل أو فيه مشكلة
+        return fallbackSearch(req, res);
     }
 };
 
@@ -166,7 +161,21 @@ exports.autocomplete = async (req, res) => {
 
     } catch (error) {
         console.error("[autocomplete]", error.message);
-        res.status(200).json({ success: true, data: [] });
+        
+        // ─── Fallback regex لو فشل Atlas
+        try {
+            const regex = { $regex: q, $options: "i" };
+            const fallbackSuggestions = await Book.find({
+                $or: [{ title: regex }, { author: regex }]
+            })
+            .limit(5)
+            .select("_id title author coverImage")
+            .lean();
+            
+            return res.status(200).json({ success: true, data: fallbackSuggestions });
+        } catch (innerErr) {
+            res.status(200).json({ success: true, data: [] });
+        }
     }
 };
 
