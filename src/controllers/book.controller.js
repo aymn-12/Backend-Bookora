@@ -90,12 +90,18 @@ exports.getAllBook = async (req, res) => {
         const limit = parseInt(req.query.limit) || 12;
         const skip  = (page - 1) * limit;
 
-        const { category, format, sort, mine, createdBy, series } = req.query;
+        const { category, format, sort, mine, createdBy, series, ids } = req.query;
 
         const matchStage = {};
         if (category)  matchStage.categories = new mongoose.Types.ObjectId(category);
         if (format)    matchStage.format      = format;
         if (series)    matchStage.series      = new mongoose.Types.ObjectId(series);
+        if (ids) {
+            const idsArray = ids.split(",").filter(id => mongoose.Types.ObjectId.isValid(id));
+            if (idsArray.length > 0) {
+                matchStage._id = { $in: idsArray.map(id => new mongoose.Types.ObjectId(id)) };
+            }
+        }
         if (createdBy) {
             matchStage.createdBy = new mongoose.Types.ObjectId(createdBy);
         } else if (mine === "true" && req.user) {
