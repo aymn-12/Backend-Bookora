@@ -34,7 +34,20 @@ app.use(cors({
 }));
 
 // ─── Performance Monitoring & Security
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: false,
+    xssFilter: true,
+    noSniff: true,
+    frameguard: {
+        action: "deny"
+    },
+    ieNoOpen: true,
+    hsts: {
+        maxAge: 63072000,
+        includeSubDomains: true,
+        preload: true
+    }
+}));
 
 // Global Rate Limiter
 const globalLimiter = rateLimit({
