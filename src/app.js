@@ -21,10 +21,8 @@ const app = express();
 // ─── General Middleware
 const allowedOrigins = [
     "http://localhost:3000",
-    "https://bookora-f3eeqf610-aymens-projects-9d98fbd2.vercel.app",
-    "https://bookora-git-main-aymens-projects-9d98fbd2.vercel.app",
-    "https://bookora-swart.vercel.app",
-    "https://bookora-two.vercel.app"
+    "https://bkora.online",
+    "https://www.bkora.online"
 ];
 
 app.use(cors({
