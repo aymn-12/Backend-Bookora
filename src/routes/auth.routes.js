@@ -11,6 +11,12 @@ const otpLimiter = rateLimit({
     message: { success: false, message: "Too many attempts, try again later" }
 });
 
+const loginRegisterLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20, // 20 attempts per 15 minutes
+    message: { success: false, message: "Too many login/register attempts, try again later" }
+});
+
 const {
     registerSchema,
     loginSchema,
@@ -20,10 +26,10 @@ const {
 } = require("../validations/auth.validation");
 
 // ─── Public Routes
-router.post("/register",        validate(registerSchema),                   authController.register);
+router.post("/register",        loginRegisterLimiter, validate(registerSchema),                   authController.register);
 router.post("/verify-email",    otpLimiter, validate(verifyEmailSchema),    authController.verifyEmail);
 router.post("/resend-otp",      otpLimiter,                                 authController.resendVerificationOTP);
-router.post("/login",           validate(loginSchema),                      authController.login);
+router.post("/login",           loginRegisterLimiter, validate(loginSchema),                      authController.login);
 router.post("/forgot-password", otpLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
 router.post("/reset-password",  otpLimiter, validate(resetPasswordSchema),  authController.resetPassword);
 router.post("/refresh-token",                                               authController.refreshToken);

@@ -5,7 +5,14 @@ const authMiddleware = require("../middlewares/OAuth.middlewares");
 const roleMiddleware = require("../middlewares/role.middlewares");
 const optionalAuth = require("../middlewares/optionalAuth.middlewares");
 const validateMiddleware = require("../middlewares/validate.middlewares");
+const rateLimit = require("express-rate-limit");
 const { updateBookSchema } = require("../validations/book.validation");
+
+const bookLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100, // 100 requests per 15 minutes per IP for book operations
+    message: { success: false, message: "Too many requests, please try again later" }
+});
 
 // ─── إعداد رفع الملفين معاً
 const bookUpload = upload.fields([
@@ -14,10 +21,10 @@ const bookUpload = upload.fields([
 ]);
 
 // ─── Public Routes
-router.get("/",    optionalAuth, bookCtrl.getAllBook);
-router.get("/:id", bookCtrl.getBookById);
-router.get("/:id/download",              optionalAuth, bookCtrl.downloadBook);
-router.post("/:id/confirm-download",     optionalAuth, bookCtrl.confirmDownload);
+router.get("/",    bookLimiter, optionalAuth, bookCtrl.getAllBook);
+router.get("/:id", bookLimiter, bookCtrl.getBookById);
+router.get("/:id/download",              bookLimiter, optionalAuth, bookCtrl.downloadBook);
+router.post("/:id/confirm-download",     bookLimiter, optionalAuth, bookCtrl.confirmDownload);
 
 // ─── Admin Routes — رفع الكتاب مع الملفات
 router.post("/",

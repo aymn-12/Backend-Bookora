@@ -3,6 +3,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 const logger = require("./utils/logger.utils");
 const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const sanitize = require('mongo-sanitize');
 const cookieParser = require("cookie-parser");
 const authRoutes = require("./routes/auth.routes");
@@ -33,18 +34,19 @@ app.use(cors({
 }));
 
 // ─── Performance Monitoring & Security
-app.use((req, res, next) => {
-    const start = Date.now();
-    res.on("finish", () => {
-        const duration = Date.now() - start;
-        if (duration > 1000) {
-            console.warn(`⚠️ [PERF] ${req.method} ${req.url} took ${duration}ms`);
-        }
-    });
-    next();
-});
-
 app.use(helmet());
+
+// Global Rate Limiter
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 2000, // Limit each IP to 2000 requests per windowMs
+    message: { success: false, message: "Too many requests from this IP, please try again later" },
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+app.use("/api", globalLimiter);
+
+
 app.use((req, res, next) => {
     req.body = sanitize(req.body);
     req.params = sanitize(req.params);
