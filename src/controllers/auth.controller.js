@@ -321,7 +321,6 @@ exports.requestChangePasswordOTP = async (req, res, next) => {
         }
         // إنشاء OTP جديد
         const otp = generateOTP();
-        console.log("Change Password OTP:", otp); // للـ Debugging
         
         user.resetOtp = hashOTP(otp); // سنستخدم نفس حقل الـ resetOtp
         user.resetOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // صالح لـ 10 دقائق
