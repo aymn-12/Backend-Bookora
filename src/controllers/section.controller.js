@@ -22,10 +22,20 @@ exports.createSection = async (req, res) => {
 exports.getAllSections = async (req, res) => {
     try {
         const sections = await Section.find().sort({ name: 1 });
+        
+        // حساب عدد الكتب لكل قسم
+        const sectionsWithCount = await Promise.all(sections.map(async (sec) => {
+            const count = await Book.countDocuments({ sections: sec._id });
+            return {
+                ...sec.toObject(),
+                booksCount: count
+            };
+        }));
+
         res.status(200).json({
             success: true,
-            count: sections.length,
-            data: sections,
+            count: sectionsWithCount.length,
+            data: sectionsWithCount,
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
