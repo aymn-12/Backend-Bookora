@@ -7,6 +7,15 @@ const BookSchema = new mongoose.Schema({
         unique: true,
         trim: true,
     },
+    normalizedTitle: {
+        type: String,
+        unique: true,
+        trim: true,
+    },
+    fileHash: {
+        type: String,
+        unique: true,
+    },
     author: {
         type: String,
         required: true,
@@ -19,6 +28,10 @@ const BookSchema = new mongoose.Schema({
     categories: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "Category",
+    }],
+    sections: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Section",
     }],
     fileUrl: {
         type: String,
@@ -68,6 +81,7 @@ const BookSchema = new mongoose.Schema({
 
 BookSchema.index({ createdBy: 1 });
 BookSchema.index({ categories: 1 });
+BookSchema.index({ sections: 1 });
 BookSchema.index({ series: 1 });
 
 module.exports = mongoose.model("Book", BookSchema);

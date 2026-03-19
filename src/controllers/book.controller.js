@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const Book = require("../models/book.models");
 const { uploadToDrive, deleteFromDrive } = require("../services/drive.service");
+const Category = require("../models/category.models");
+const Section = require("../models/section.models");
+const { normalizeArabic, generateFileHash } = require("../utils/string.utils");
 
 // ─── إنشاء كتاب جديد
 exports.createBook = async (req, res, next) => {
@@ -8,7 +11,7 @@ exports.createBook = async (req, res, next) => {
     let uploadedCoverId = null;
 
     try {
-        const { title, author, description, categories, format, keyTakeaways, series, seriesOrder } = req.body;
+        const { title, author, description, categories, sections, format, keyTakeaways, series, seriesOrder } = req.body;
 
         if (!req.files?.bookFile?.[0]) {
             return res.status(400).json({ success: false, message: "ملف الكتاب مطلوب (bookFile)" });
@@ -17,10 +20,31 @@ exports.createBook = async (req, res, next) => {
             return res.status(400).json({ success: false, message: "صورة الغلاف مطلوبة (coverImage)" });
         }
 
-        const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories] : [];
-
         const bookFile  = req.files.bookFile[0];
         const coverFile = req.files.coverImage[0];
+
+        // ─── التحقق الذكي من التكرار (Smarter Duplication Check)
+        const fileHash = generateFileHash(bookFile.buffer);
+        const normalizedTitle = normalizeArabic(title);
+
+        const existingBook = await Book.findOne({
+            $or: [
+                { fileHash },
+                { normalizedTitle }
+            ]
+        });
+
+        if (existingBook) {
+            const reason = existingBook.fileHash === fileHash ? "هذا الملف موجود بالفعل" : "هذا الكتاب موجود بالفعل تحت عنوان مشابه";
+            return res.status(400).json({
+                success: false,
+                message: reason,
+                data: { existingBookId: existingBook._id }
+            });
+        }
+
+        const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories] : [];
+        const sectionsArray = Array.isArray(sections) ? sections : sections ? [sections] : [];
 
         const bookExt        = bookFile.originalname.split('.').pop();
         const cleanBookName  = `${title}.${bookExt}`;
@@ -60,11 +84,14 @@ exports.createBook = async (req, res, next) => {
             author,
             description,
             categories:   categoriesArray,
+            sections:     sectionsArray,
             format:       format || "pdf",
             fileUrl:      bookDrive.fileUrl,
             coverImage:   coverDrive.previewUrl,
             driveFileId:  bookDrive.fileId,
             driveCoverId: coverDrive.fileId,
+            fileHash,
+            normalizedTitle,
             keyTakeaways,
             series:       series || null,
             seriesOrder:  seriesOrder || null,
@@ -83,7 +110,7 @@ exports.createBook = async (req, res, next) => {
     }
 };
 
-// ─── عرض كل الكتب (فلترة فقط — البحث انتقل لـ search.controller.js)
+// ─── عرض كل الكتب
 exports.getAllBook = async (req, res) => {
     try {
         const page  = parseInt(req.query.page)  || 1;
@@ -125,6 +152,7 @@ exports.getAllBook = async (req, res) => {
                         { $skip: skip },
                         { $limit: limit },
                         { $lookup: { from: "categories", localField: "categories", foreignField: "_id", as: "categories" } },
+                        { $lookup: { from: "sections",   localField: "sections",   foreignField: "_id", as: "sections" } },
                         { $lookup: { from: "series",     localField: "series",     foreignField: "_id", as: "seriesData" } },
                         { $unwind: { path: "$seriesData", preserveNullAndEmptyArrays: true } },
                         { $lookup: { from: "users",      localField: "createdBy",  foreignField: "_id", as: "createdBy" } },
@@ -168,11 +196,30 @@ exports.updateBook = async (req, res, next) => {
         if (safeFields.categories && !Array.isArray(safeFields.categories)) {
             safeFields.categories = [safeFields.categories];
         }
+        if (safeFields.sections && !Array.isArray(safeFields.sections)) {
+            safeFields.sections = [safeFields.sections];
+        }
+
+        if (safeFields.title) {
+            safeFields.normalizedTitle = normalizeArabic(safeFields.title);
+
+            // Check if normalized title already exists elsewhere
+            const duplicate = await Book.findOne({
+                normalizedTitle: safeFields.normalizedTitle,
+                _id: { $ne: req.params.id }
+            });
+            if (duplicate) {
+                return res.status(400).json({
+                    success: false,
+                    message: "يوجد كتاب آخر بنفس هذا العنوان"
+                });
+            }
+        }
 
         const updatedBook = await Book.findByIdAndUpdate(req.params.id, safeFields, {
             new: true,
             runValidators: true,
-        }).populate("categories", "name").populate("series", "name");
+        }).populate("categories", "name").populate("sections", "name icon description").populate("series", "name");
 
         res.status(200).json({ success: true, data: updatedBook });
     } catch (error) {
@@ -238,8 +285,49 @@ exports.getBookById = async (req, res) => {
     try {
         const book = await Book.findById(req.params.id)
             .populate("categories", "name")
+            .populate("sections", "name icon description")
             .populate("series", "name");
         if (!book) return res.status(404).json({ message: "Book not found" });
         res.status(200).json({ success: true, data: book });
     } catch (error) { res.status(500).json({ message: error.message }); }
+};
+
+// ─── التحقق من العنوان والبحث الذكي (Smart Title Check)
+exports.checkTitleStatus = async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 2) {
+            return res.json({ success: true, isExactDuplicate: false, suggestions: [] });
+        }
+
+        const normalized = normalizeArabic(q);
+        
+        // 1. بحث عن مطابقة تامة بعد المعالجة
+        const exactMatch = await Book.findOne({ normalizedTitle: normalized })
+            .select("title author coverImage format")
+            .lean();
+
+        // 2. بحث عن اقتراحات مشابهة (Simple fuzzy regex)
+        const regexSearch = q.trim().split(/\s+/).join("|");
+        const suggestions = await Book.find({ 
+            $or: [
+                { title: { $regex: regexSearch, $options: "i" } },
+                { author: { $regex: regexSearch, $options: "i" } }
+            ],
+            _id: { $ne: exactMatch?._id }
+        })
+        .limit(5)
+        .select("title author coverImage format")
+        .lean();
+
+        res.json({
+            success: true,
+            isExactDuplicate: !!exactMatch,
+            exactMatch,
+            suggestions
+        });
+    } catch (error) {
+        console.error("[checkTitleStatus] Error:", error);
+        res.status(500).json({ success: false, message: "Error checking title" });
+    }
 };
