@@ -10,4 +10,17 @@ router.post("/", authMiddleware, roleMiddleware(["admin", "superadmin"]), sectio
 router.put("/:id", authMiddleware, roleMiddleware(["admin", "superadmin"]), sectionCtrl.updateSection);
 router.delete("/:id", authMiddleware, roleMiddleware(["admin", "superadmin"]), sectionCtrl.deleteSection);
 
+// ─── إدارة كتب القسم
+router.post("/:id/books",
+    authMiddleware,
+    roleMiddleware(["admin", "superadmin"]),
+    sectionCtrl.addBookToSection
+);
+
+router.delete("/:id/books/:bookId",
+    authMiddleware,
+    roleMiddleware(["admin", "superadmin"]),
+    sectionCtrl.removeBookFromSection
+);
+
 module.exports = router;
