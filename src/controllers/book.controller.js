@@ -117,10 +117,11 @@ exports.getAllBook = async (req, res) => {
         const limit = parseInt(req.query.limit) || 12;
         const skip  = (page - 1) * limit;
 
-        const { category, format, sort, mine, createdBy, series, ids } = req.query;
+        const { category, section, format, sort, mine, createdBy, series, ids } = req.query;
 
         const matchStage = {};
         if (category)  matchStage.categories = new mongoose.Types.ObjectId(category);
+        if (section)   matchStage.sections   = new mongoose.Types.ObjectId(section);
         if (format)    matchStage.format      = format;
         if (series)    matchStage.series      = new mongoose.Types.ObjectId(series);
         if (ids) {

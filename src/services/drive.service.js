@@ -46,7 +46,7 @@ const uploadToDrive = async ({ buffer, mimetype, originalname, folderId }) => {
 
     const res = await drive.files.create({
         requestBody: {
-            name: `${Date.now()}-${originalname}`,
+            name: `-${originalname}`,
             parents: [folderId],
         },
         media: {
