@@ -7,7 +7,7 @@ exports.getGlobalStats = async (req, res) => {
 
         // Get total downloads count
         const downloadStats = await Book.aggregate([
-            { $group: { _id: null, total: { $sum: "$downloads" } } }
+            { $group: { _id: null, total: { $sum: "$downloadCount" } } }
         ]);
         const totalDownloads = downloadStats.length > 0 ? downloadStats[0].total : 0;
 

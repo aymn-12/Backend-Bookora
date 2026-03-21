@@ -33,7 +33,7 @@ exports.getStats = async (req, res, next) => {
             // آخر 5 مستخدمين سجلوا
             User.find({ isVerified: true }).sort({ createdAt: -1 }).limit(5).select("name email createdAt"),
             // إجمالي التحميلات لجميع الكتب
-            Book.aggregate([{ $group: { _id: null, total: { $sum: "$downloads" } } }]),
+            Book.aggregate([{ $group: { _id: null, total: { $sum: "$downloadCount" } } }]),
         ]);
 
         const totalDownloads = downloadStats.length > 0 ? downloadStats[0].total : 0;
