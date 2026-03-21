@@ -15,6 +15,7 @@ exports.getStats = async (req, res, next) => {
             totalCategories,
             topBooks,
             recentUsers,
+            downloadStats,
         ] = await Promise.all([
             // إجمالي المستخدمين المؤكدين
             User.countDocuments({ isVerified: true }),
@@ -28,10 +29,14 @@ exports.getStats = async (req, res, next) => {
             // إجمالي التصنيفات
             Category.countDocuments(),
             // أكثر 5 كتب تحميلاً
-            Book.find().sort({ downloadCount: -1 }).limit(5).select("title author downloadCount coverImage"),
+            Book.find().sort({ downloads: -1 }).limit(5).select("title author downloads coverImage"),
             // آخر 5 مستخدمين سجلوا
             User.find({ isVerified: true }).sort({ createdAt: -1 }).limit(5).select("name email createdAt"),
+            // إجمالي التحميلات لجميع الكتب
+            Book.aggregate([{ $group: { _id: null, total: { $sum: "$downloads" } } }]),
         ]);
+
+        const totalDownloads = downloadStats.length > 0 ? downloadStats[0].total : 0;
 
         res.status(200).json({
             success: true,
@@ -40,6 +45,7 @@ exports.getStats = async (req, res, next) => {
                 totalAdmins,
                 totalRegularUsers,
                 totalBooks,
+                totalDownloads,
                 totalReviews,
                 totalCategories,
                 topBooks,
