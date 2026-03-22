@@ -17,6 +17,7 @@ const sectionRoutes = require("./routes/section.routes");
 const bookRequestRoutes = require("./routes/bookRequest.routes");
 const searchRoutes = require("./routes/search.routes");
 const statsRoutes = require("./routes/stats.routes");
+const downloadRoutes = require("./routes/download.routes");
 
 const { errorHandler, notFound } = require("./middlewares/error.middleware");
 
@@ -83,6 +84,7 @@ app.use(morgan("combined", {
 app.use(cookieParser());
 
 // ─── Routes
+app.use("/api", downloadRoutes);
 app.use("/api/admin",      adminRoutes);
 app.use("/api/auth",       authRoutes);
 app.use("/api/books",      bookRoutes);
