@@ -2,11 +2,21 @@
 const express = require("express");
 const router = express.Router();
 const { google } = require("googleapis");
+const { pipeline } = require("stream");
 const Book = require("../models/book.models");
+const rateLimit = require("express-rate-limit");
+const optionalAuth = require("../middlewares/optionalAuth.middlewares");
 
 const { drive } = require("../services/drive.service");
 
-router.get("/:bookId", async (req, res) => {
+// إضافة حد للتحميل لتجنب إساءة الاستخدام
+const downloadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100, // 100 requests per 15 minutes
+    message: { success: false, message: "Too many requests, please try again later" }
+});
+
+router.get("/:bookId", downloadLimiter, optionalAuth, async (req, res) => {
   try {
     const book = await Book.findById(req.params.bookId);
     if (!book) return res.status(404).json({ message: "كتاب غير موجود" });
@@ -24,13 +34,19 @@ router.get("/:bookId", async (req, res) => {
 
     const fileName = fileMeta.data.name || `${book.title}.pdf`;
     const mimeType = fileMeta.data.mimeType || "application/pdf";
+    const fileSize = fileMeta.data.size;
 
     // headers التحميل المباشر — تشتغل على كل المتصفحات بما فيها Safari
     res.setHeader("Content-Type", mimeType);
+    if (fileSize) {
+      res.setHeader("Content-Length", fileSize);
+    }
+
     res.setHeader(
       "Content-Disposition",
       `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
     );
+
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("X-Content-Type-Options", "nosniff");
 
@@ -40,12 +56,19 @@ router.get("/:bookId", async (req, res) => {
       { responseType: "stream" }
     );
 
-    driveStream.data
-      .on("error", (err) => {
-        console.error("Drive stream error:", err);
-        if (!res.headersSent) res.status(500).json({ message: "خطأ في التحميل" });
-      })
-      .pipe(res);
+    // استخدام pipeline للحماية من Memory Leaks في حال قيام المستخدم بإلغاء التحميل
+    pipeline(
+      driveStream.data,
+      res,
+      (err) => {
+        if (err) {
+          console.error("Pipeline Download error:", err.message);
+          if (!res.headersSent) {
+            res.status(500).json({ message: "انقطع الاتصال أو حدث خطأ أثناء التحميل" });
+          }
+        }
+      }
+    );
 
   } catch (err) {
     console.error("Download error:", err);
