@@ -84,4 +84,4 @@ const deleteFromDrive = async (fileId) => {
     }
 };
 
-module.exports = { uploadToDrive, deleteFromDrive };
+module.exports = { uploadToDrive, deleteFromDrive, drive };

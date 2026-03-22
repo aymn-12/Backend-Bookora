@@ -4,10 +4,7 @@ const router = express.Router();
 const { google } = require("googleapis");
 const Book = require("../models/book.models");
 
-const auth = new google.auth.GoogleAuth({
-  keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH,
-  scopes: ["https://www.googleapis.com/auth/drive.readonly"],
-});
+const { drive } = require("../services/drive.service");
 
 router.get("/:bookId", async (req, res) => {
   try {
@@ -18,8 +15,6 @@ router.get("/:bookId", async (req, res) => {
     if (!fileId || fileId.startsWith("api_")) {
       return res.redirect(book.fileUrl);
     }
-
-    const drive = google.drive({ version: "v3", auth });
 
     // جلب معلومات الملف
     const fileMeta = await drive.files.get({
