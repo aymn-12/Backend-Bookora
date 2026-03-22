@@ -83,8 +83,8 @@ app.use(morgan("combined", {
 
 app.use(cookieParser());
 
-// ─── Routes
-app.use("/api", downloadRoutes);
+// ─── Routes 
+app.use("/api/download", downloadRoutes);
 app.use("/api/admin",      adminRoutes);
 app.use("/api/auth",       authRoutes);
 app.use("/api/books",      bookRoutes);

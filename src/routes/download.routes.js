@@ -2,14 +2,14 @@
 const express = require("express");
 const router = express.Router();
 const { google } = require("googleapis");
-const Book = require("../models/book.model");
+const Book = require("../models/book.models");
 
 const auth = new google.auth.GoogleAuth({
   keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH,
   scopes: ["https://www.googleapis.com/auth/drive.readonly"],
 });
 
-router.get("/download/:bookId", async (req, res) => {
+router.get("/:bookId", async (req, res) => {
   try {
     const book = await Book.findById(req.params.bookId);
     if (!book) return res.status(404).json({ message: "كتاب غير موجود" });
