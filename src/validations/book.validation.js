@@ -3,7 +3,7 @@ const Joi = require("joi");
 exports.createBookSchema = Joi.object({
     title: Joi.string().min(2).max(100).required(),
     author: Joi.string().min(2).max(50).required(),
-    description: Joi.string().min(1).optional(),
+    description: Joi.string().allow('', null).optional(),
     categories: Joi.alternatives().try(
         Joi.array().items(Joi.string().hex().length(24)),
         Joi.string().hex().length(24)
@@ -13,15 +13,16 @@ exports.createBookSchema = Joi.object({
         Joi.string().hex().length(24)
     ),
     format: Joi.string().valid('pdf', 'epub').default('pdf'),
-    keyTakeaways: Joi.string().optional(),
+    keyTakeaways: Joi.string().allow('', null).optional(),
+    isbn: Joi.string().allow('', null).optional(),
     series: Joi.string().hex().length(24).allow(null).optional(),
     seriesOrder: Joi.number().allow(null).optional()
-});
+}).unknown(true);
 
 exports.updateBookSchema = Joi.object({
     title: Joi.string().min(2).max(100),
     author: Joi.string().min(2).max(50),
-    description: Joi.string().min(1),
+    description: Joi.string().allow('', null).optional(),
     categories: Joi.alternatives().try(
         Joi.array().items(Joi.string().hex().length(24)),
         Joi.string().hex().length(24)
@@ -31,7 +32,8 @@ exports.updateBookSchema = Joi.object({
         Joi.string().hex().length(24)
     ),
     format: Joi.string().valid('pdf', 'epub'),
-    keyTakeaways: Joi.string().optional(),
+    keyTakeaways: Joi.string().allow('', null).optional(),
+    isbn: Joi.string().allow('', null).optional(),
     series: Joi.string().hex().length(24).allow(null).optional(),
     seriesOrder: Joi.number().allow(null).optional()
-}).min(1);
+}).min(1).unknown(true);

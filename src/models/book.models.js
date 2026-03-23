@@ -58,6 +58,10 @@ const BookSchema = new mongoose.Schema({
         type: [String],
         default: [],
     },
+    isbn: {
+        type: String,
+        default: null,
+    },
     downloadCount: {
         type: Number,
         default: 0,
