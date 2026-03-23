@@ -36,11 +36,13 @@ router.post("/",
     bookCtrl.createBook
 );
 
-// ─── تعديل البيانات النصية فقط (بدون ملفات)
+// ─── تعديل البيانات (نصوص + ملفات)
 router.put(
     "/:id",
     authMiddleware,
     roleMiddleware(["admin", "superadmin"]),
+    bookUpload,
+    validateFileSizes,
     validateMiddleware(updateBookSchema),
     bookCtrl.updateBook
 );

@@ -217,6 +217,68 @@ exports.updateBook = async (req, res, next) => {
             }
         }
 
+        // --- Handle File Uploads for Edit ---
+        if (req.files?.bookFile?.[0]) {
+            const bookFile = req.files.bookFile[0];
+            const fileHash = generateFileHash(bookFile.buffer);
+
+            // check duplicate file
+            const existingBookFile = await Book.findOne({ fileHash, _id: { $ne: req.params.id } });
+            if (existingBookFile) {
+                return res.status(400).json({ success: false, message: "هذا الملف (PDF/EPUB) موجود بالفعل لكتاب آخر" });
+            }
+
+            const bookExt = bookFile.originalname.split('.').pop();
+            const cleanBookName = `${safeFields.title || book.title}.${bookExt}`;
+            
+            const bookDrive = await uploadToDrive({
+                buffer: bookFile.buffer,
+                mimetype: bookFile.mimetype,
+                originalname: cleanBookName,
+                folderId: process.env.GOOGLE_BOOKS_FOLDER_ID,
+            });
+
+            // delete old book file from drive silently
+            if (book.driveFileId) {
+                await deleteFromDrive(book.driveFileId).catch(err => console.error("Error deleting old book file:", err));
+            }
+
+            safeFields.fileUrl = bookDrive.fileUrl;
+            safeFields.driveFileId = bookDrive.fileId;
+            safeFields.fileHash = fileHash;
+        }
+
+        if (req.files?.coverImage?.[0]) {
+            const coverFile = req.files.coverImage[0];
+            const cleanCoverName = `${safeFields.title || book.title}-cover.jpg`;
+
+            let coverBuffer = coverFile.buffer;
+            try {
+                const sharp = require("sharp");
+                coverBuffer = await sharp(coverFile.buffer)
+                    .resize(400, 600, { fit: "cover" })
+                    .jpeg({ quality: 80 })
+                    .toBuffer();
+            } catch {
+                coverBuffer = coverFile.buffer;
+            }
+
+            const coverDrive = await uploadToDrive({
+                buffer: coverBuffer,
+                mimetype: "image/jpeg",
+                originalname: cleanCoverName,
+                folderId: process.env.GOOGLE_COVERS_FOLDER_ID,
+            });
+
+            // delete old cover file from drive silently
+            if (book.driveCoverId) {
+                await deleteFromDrive(book.driveCoverId).catch(err => console.error("Error deleting old cover max:", err));
+            }
+
+            safeFields.coverImage = coverDrive.previewUrl;
+            safeFields.driveCoverId = coverDrive.fileId;
+        }
+
         const updatedBook = await Book.findByIdAndUpdate(req.params.id, safeFields, {
             new: true,
             runValidators: true,
