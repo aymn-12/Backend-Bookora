@@ -4,4 +4,5 @@ node_modules
 /uploads
 /src/config/service-account.json
 /src/get-token.js
+/src/get-code.js
 /src/seedBooks.js
