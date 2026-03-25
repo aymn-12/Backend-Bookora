@@ -403,3 +403,30 @@ exports.checkTitleStatus = async (req, res) => {
         res.status(500).json({ success: false, message: "Error checking title" });
     }
 };
+
+// ─── جلب الكتب ذات الصلة
+exports.getRelatedBooks = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const book = await Book.findById(id);
+        if (!book) return res.status(404).json({ success: false, message: "Book not found" });
+
+        // نجد الكتب التي تشترك في تصنيف واحد على الأقل أو نفس المؤلف
+        const related = await Book.find({
+            _id: { $ne: id },
+            $or: [
+                { categories: { $in: book.categories || [] } },
+                { author: book.author }
+            ]
+        })
+        .limit(6)
+        .select("title author coverImage format")
+        .sort({ downloadCount: -1 })
+        .lean();
+
+        res.json({ success: true, data: related });
+    } catch (error) {
+        console.error("[getRelatedBooks] Error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

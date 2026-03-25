@@ -24,6 +24,7 @@ const bookUpload = upload.fields([
 router.get("/",    bookLimiter, optionalAuth, bookCtrl.getAllBook);
 router.get("/check-title", bookLimiter, bookCtrl.checkTitleStatus); 
 router.get("/:id", bookLimiter, bookCtrl.getBookById);
+router.get("/:id/related", bookLimiter, bookCtrl.getRelatedBooks);
 router.get("/:id/download",              bookLimiter, optionalAuth, bookCtrl.downloadBook);
 router.post("/:id/confirm-download",     bookLimiter, optionalAuth, bookCtrl.confirmDownload);
 
