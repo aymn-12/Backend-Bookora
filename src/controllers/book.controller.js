@@ -370,8 +370,17 @@ exports.checkTitleStatus = async (req, res) => {
             .select("title author coverImage format")
             .lean();
 
-        // 2. بحث عن اقتراحات مشابهة (Simple fuzzy regex)
-        const regexSearch = q.trim().split(/\s+/).join("|");
+        // 2. بحث عن اقتراحات مشابهة (Improved token-based search)
+        // تنظيف الاستعلام من الرموز والكلمات القصيرة جداً
+        const cleanQ = q.replace(/[^\w\s\u0600-\u06FF]/g, " ").trim();
+        const tokens = cleanQ.split(/\s+/).filter(t => t.length > 2);
+        
+        // إذا كانت جميع الكلمات قصيرة (مثل "فن الـ") نستخدمها كما هي
+        const searchTokens = tokens.length > 0 ? tokens : cleanQ.split(/\s+/).filter(t => t.length > 0);
+        
+        // إنشاء تعبير منتظم يبحث عن الكلمات كأجزاء مستقلة
+        const regexSearch = searchTokens.map(t => `(${t})`).join("|");
+
         const suggestions = await Book.find({ 
             $or: [
                 { title: { $regex: regexSearch, $options: "i" } },

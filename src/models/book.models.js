@@ -81,8 +81,9 @@ const BookSchema = new mongoose.Schema({
         ref: "User",
         required: true,
     },
-}, { timestamps: true });
+}, { timestamps: true }); 
 
+BookSchema.index({ title: "text", author: "text" });
 BookSchema.index({ createdBy: 1 });
 BookSchema.index({ categories: 1 });
 BookSchema.index({ sections: 1 });
