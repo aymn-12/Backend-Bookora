@@ -137,9 +137,9 @@ exports.getAllBook = async (req, res) => {
         }
 
         const sortOptions = {
-            newest:    { createdAt: -1 },
-            downloads: { downloadCount: -1 },
-            title:     { title: 1 },
+            newest:    { createdAt: -1, _id: -1 },
+            downloads: { downloadCount: -1, _id: -1 },
+            title:     { title: 1, _id: -1 },
         };
         const sortBy = sortOptions[sort] || sortOptions.newest;
 
