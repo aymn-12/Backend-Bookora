@@ -54,10 +54,6 @@ const BookSchema = new mongoose.Schema({
         enum: ["pdf", "epub"],
         default: "pdf",
     },
-    keyTakeaways: {
-        type: [String],
-        default: [],
-    },
     isbn: {
         type: String,
         default: null,

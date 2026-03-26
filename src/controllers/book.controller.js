@@ -11,7 +11,7 @@ exports.createBook = async (req, res, next) => {
     let uploadedCoverId = null;
 
     try {
-        const { title, author, description, categories, sections, format, keyTakeaways, series, seriesOrder } = req.body;
+        const { title, author, description, categories, sections, format, series, seriesOrder } = req.body;
 
         if (!req.files?.bookFile?.[0]) {
             return res.status(400).json({ success: false, message: "ملف الكتاب مطلوب (bookFile)" });
@@ -92,7 +92,6 @@ exports.createBook = async (req, res, next) => {
             driveCoverId: coverDrive.fileId,
             fileHash,
             normalizedTitle,
-            keyTakeaways,
             series:       series || null,
             seriesOrder:  seriesOrder || null,
             createdBy:    req.user._id,
