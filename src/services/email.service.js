@@ -197,8 +197,17 @@ const sendEmail = async ({ to, subject, html }) => {
             }
         );
     } catch (error) {
-        console.error("Brevo Email Error:", error.response?.data || error.message);
-        throw new Error("فشل إرسال البريد الإلكتروني. يرجى المحاولة لاحقاً.");
+        // Log the real error for debugging
+        console.error("Brevo Email Error Details:", {
+            message: error.message,
+            response: error.response?.data,
+            code: error.code
+        });
+        
+        // Hide technical details from the user
+        const friendlyError = new Error("عذراً، فشل إرسال الرمز إلى بريدك الإلكتروني. يرجى مراجعة البريد والمحاولة مرة أخرى.");
+        friendlyError.status = 503; // Service Unavailable
+        throw friendlyError;
     }
 }
 

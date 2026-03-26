@@ -10,10 +10,25 @@ const errorHandler = (err, req, res, next) => {
     const status = err.status || 500;
     let message = err.message || "حدث خطأ غير متوقع في النظام.";
 
-    // تحويل الرسائل الشائعة للعربية
-    if (status === 500 && !err.message) {
-        message = "عذراً، واجهنا مشكلة تقنية. يرجى المحاولة لاحقاً.";
+    // Logic to sanitize technical messages from production users
+    const technicalKeywords = [
+        'SSL', 'TLS', 'ECONNREFUSED', 'ETIMEDOUT', 'OpenSSL', 'routines',
+        'mongodb', 'mongoose', 'database', 'query', 'syntax error', 'unexpected token'
+    ];
+
+    const isTechnical = technicalKeywords.some(kw => 
+        message.toLowerCase().includes(kw.toLowerCase()) || 
+        (err.stack && err.stack.toLowerCase().includes(kw.toLowerCase()))
+    );
+
+    if (isTechnical && process.env.NODE_ENV !== "development") {
+        message = "عذراً، واجهنا مشكلة تقنية أثناء معالجة طلبك. يرجى المحاولة مرة أخرى لاحقاً.";
     }
+
+    // Specific mapping for common errors
+    if (status === 404) message = "المورد المطلوب غير موجود.";
+    if (status === 401) message = "غير مصرح لك بالوصول. يرجى تسجيل الدخول.";
+    if (status === 403) message = "ليس لديك الصلاحية للقيام بهذا الإجراء.";
 
     res.status(status).json({
         success: false,
