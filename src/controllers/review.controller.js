@@ -1,6 +1,32 @@
 const Review = require("../models/review.models");
 const Book = require("../models/book.models");
 
+// دالة مساعدة لتحديث تقييم الكتاب
+const updateBookRating = async (bookId) => {
+    const stats = await Review.aggregate([
+        { $match: { book: new require("mongoose").Types.ObjectId(bookId) } },
+        {
+            $group: {
+                _id: "$book",
+                averageRating: { $avg: "$rating" },
+                reviewCount: { $sum: 1 }
+            }
+        }
+    ]);
+
+    if (stats.length > 0) {
+        await Book.findByIdAndUpdate(bookId, {
+            averageRating: Math.round(stats[0].averageRating * 10) / 10,
+            reviewCount: stats[0].reviewCount
+        });
+    } else {
+        await Book.findByIdAndUpdate(bookId, {
+            averageRating: 0,
+            reviewCount: 0
+        });
+    }
+};
+
 // ─── Add Review
 exports.addReview = async (req, res, next) => {
     try {
@@ -24,6 +50,9 @@ exports.addReview = async (req, res, next) => {
             rating,
             comment,
         });
+
+        // تحديث إحصائيات الكتاب
+        await updateBookRating(bookId);
 
         res.status(201).json({ success: true, data: review });
     } catch (error) { next(error); }
@@ -68,12 +97,17 @@ exports.deleteReview = async (req, res, next) => {
         if (!review)
             return res.status(404).json({ message: "Review not found" });
 
+        const bookId = review.book;
+
         // فقط صاحب التقييم أو الـ admin يقدر يحذف
         if (review.user.toString() !== req.user._id.toString() && req.user.role !== "admin")
             return res.status(403).json({ message: "Not authorized" });
 
         await review.deleteOne();
 
+        // تحديث إحصائيات الكتاب
+        await updateBookRating(bookId);
+
         res.status(200).json({ success: true, data: {} });
     } catch (error) { next(error); }
-};
+};

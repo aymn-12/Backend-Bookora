@@ -77,6 +77,17 @@ const BookSchema = new mongoose.Schema({
         ref: "User",
         required: true,
     },
+    // ─── ميزة التقييمات (لتحسين الأداء)
+    averageRating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5
+    },
+    reviewCount: {
+        type: Number,
+        default: 0
+    }
 }, { timestamps: true }); 
 
 BookSchema.index({ title: "text", author: "text" });

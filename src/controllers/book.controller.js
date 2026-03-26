@@ -138,6 +138,7 @@ exports.getAllBook = async (req, res) => {
         const sortOptions = {
             newest:    { createdAt: -1, _id: -1 },
             downloads: { downloadCount: -1, _id: -1 },
+            rating:    { averageRating: -1, reviewCount: -1, _id: -1 },
             title:     { title: 1, _id: -1 },
         };
         const sortBy = sortOptions[sort] || sortOptions.newest;
@@ -370,12 +371,12 @@ exports.checkTitleStatus = async (req, res) => {
             .lean();
 
         // 2. بحث عن اقتراحات مشابهة (Improved token-based search)
-        // تنظيف الاستعلام من الرموز والكلمات القصيرة جداً
-        const cleanQ = q.replace(/[^\w\s\u0600-\u06FF]/g, " ").trim();
-        const tokens = cleanQ.split(/\s+/).filter(t => t.length > 2);
+        const stopWords = ["رواية", "روايه", "كتاب", "قصة", "قصه", "تحميل", "مجاني", "مجاناً"];
+        let searchTokens = tokens.filter(t => !stopWords.includes(t));
         
-        // إذا كانت جميع الكلمات قصيرة (مثل "فن الـ") نستخدمها كما هي
-        const searchTokens = tokens.length > 0 ? tokens : cleanQ.split(/\s+/).filter(t => t.length > 0);
+        // إذا كان الاستعلام يتكون فقط من "كلمات توقف" (مثل "رواية")، نتركها حتى لا تفرغ مصفوفة البحث
+        if (searchTokens.length === 0) searchTokens = tokens;
+        if (searchTokens.length === 0) searchTokens = cleanQ.split(/\s+/).filter(t => t.length > 0);
         
         // إنشاء تعبير منتظم يبحث عن الكلمات كأجزاء مستقلة
         const regexSearch = searchTokens.map(t => `(${t})`).join("|");

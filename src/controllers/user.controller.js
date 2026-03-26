@@ -50,3 +50,31 @@ exports.removeFromLibrary = async (req, res, next) => {
         res.status(200).json({ success: true, message: "Book removed from saved books" });
     } catch (error) { next(error); }
 };
+
+// ─── Sync Saved Books (مزامنة المكتبة)
+exports.syncLibrary = async (req, res, next) => {
+    try {
+        const { bookIds } = req.body;
+        if (!Array.isArray(bookIds)) 
+            return res.status(400).json({ message: "bookIds must be an array" });
+
+        const user = await User.findById(req.user._id);
+        
+        // Filter out invalid IDs and duplicates
+        const validBookIds = await Book.find({ _id: { $in: bookIds } }).distinct("_id");
+        const existingIds = user.savedBooks.map(id => id.toString());
+        
+        const newBooks = validBookIds.filter(id => !existingIds.includes(id.toString()));
+        
+        if (newBooks.length > 0) {
+            user.savedBooks.push(...newBooks);
+            await user.save();
+        }
+
+        res.status(200).json({ 
+            success: true, 
+            message: `تم مزامنة ${newBooks.length} كتب بنجاح`,
+            count: user.savedBooks.length 
+        });
+    } catch (error) { next(error); }
+};

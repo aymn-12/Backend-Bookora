@@ -12,6 +12,7 @@ const libraryLimiter = rateLimit({
 
 router.get("/library",          libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.getLibrary);
 router.post("/library/:bookId", libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.addToLibrary);
+router.post("/library-sync",   libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.syncLibrary);
 router.delete("/library/:bookId", libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.removeFromLibrary);
 
 module.exports = router;
