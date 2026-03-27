@@ -4,6 +4,7 @@ const {
     createRequest, 
     getAllRequests, 
     updateRequestStatus, 
+    bulkUpdateRequestStatus,
     deleteRequest 
 } = require("../controllers/bookRequest.controller");
 const authMiddleware = require("../middlewares/OAuth.middlewares");
