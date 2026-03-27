@@ -15,6 +15,7 @@ router.post("/", createRequest);
 
 // Admin only routes
 router.get("/", roleMiddleware(["admin", "superadmin"]), getAllRequests);
+router.patch("/bulk-status", roleMiddleware(["admin", "superadmin"]), bulkUpdateRequestStatus);
 router.patch("/:id", roleMiddleware(["admin", "superadmin"]), updateRequestStatus);
 router.delete("/:id", roleMiddleware(["admin", "superadmin"]), deleteRequest);
 

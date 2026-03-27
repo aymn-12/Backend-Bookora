@@ -55,6 +55,29 @@ const updateRequestStatus = async (req, res) => {
     }
 };
 
+// Bulk update request status (Admin only)
+const bulkUpdateRequestStatus = async (req, res) => {
+    try {
+        const { ids, status } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, message: "Invalid IDs provided" });
+        }
+
+        const result = await BookRequest.updateMany(
+            { _id: { $in: ids } },
+            { status }
+        );
+
+        res.status(200).json({ 
+            success: true, 
+            message: `Successfully updated ${result.modifiedCount} requests`,
+            count: result.modifiedCount 
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 // Delete a request (Admin only)
 const deleteRequest = async (req, res) => {
     try {
@@ -68,4 +91,10 @@ const deleteRequest = async (req, res) => {
     }
 };
 
-module.exports = { createRequest, getAllRequests, updateRequestStatus, deleteRequest };
+module.exports = { 
+    createRequest, 
+    getAllRequests, 
+    updateRequestStatus, 
+    bulkUpdateRequestStatus,
+    deleteRequest 
+};
