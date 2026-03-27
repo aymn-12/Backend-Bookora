@@ -1,4 +1,5 @@
 const Book = require("../models/book.models");
+const BookRequest = require("../models/bookRequest.models");
 
 exports.getGlobalStats = async (req, res) => {
     try {
@@ -15,12 +16,16 @@ exports.getGlobalStats = async (req, res) => {
         const authors = await Book.distinct("author");
         const totalAuthors = authors.length;
 
+        // Get total requests count
+        const totalRequests = await BookRequest.countDocuments();
+
         res.json({
             success: true,
             data: {
                 totalBooks,
                 totalDownloads,
-                totalAuthors
+                totalAuthors,
+                totalRequests
             }
         });
     } catch (error) {

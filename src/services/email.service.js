@@ -4,6 +4,67 @@ const axios = require("axios");
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 
+const bookRequestStatusTemplate = (status, bookTitle) => {
+  const config = {
+    approved: {
+      subject: `✅ تمت الموافقة على طلبك — ${bookTitle}`,
+      color: "#4F46E5",
+      title: "تمت الموافقة على طلبك!",
+      message: `وافقنا على طلب كتاب <strong>${bookTitle}</strong> وسنعمل على توفيره قريباً.`,
+    },
+    fulfilled: {
+      subject: `📚 الكتاب متاح الآن — ${bookTitle}`,
+      color: "#059669",
+      title: "الكتاب أصبح متاحاً!",
+      message: `كتاب <strong>${bookTitle}</strong> أصبح متاحاً الآن في المكتبة!`,
+    },
+    rejected: {
+      subject: `❌ بخصوص طلبك — ${bookTitle}`,
+      color: "#DC2626",
+      title: "لم نتمكن من توفير الكتاب",
+      message: `نأسف، لم نتمكن من توفير كتاب <strong>${bookTitle}</strong> حالياً.`,
+    },
+  };
+
+  const { color, title, message, subject } = config[status];
+
+  return {
+    subject,
+    html: `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <body style="margin:0;padding:0;background:#f4f4f5;font-family:'Segoe UI',sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+        <tr><td align="center">
+          <table width="520" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+            <tr>
+              <td align="center" style="background:${color};padding:36px 40px;">
+                <h1 style="margin:0;color:#fff;font-size:26px;">بُكورا</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:40px;text-align:right;">
+                <h2 style="margin:0 0 12px;color:#111827;">${title}</h2>
+                <p style="margin:0 0 24px;color:#6b7280;line-height:1.6;">${message}</p>
+                <div style="background:#f9fafb;border:2px dashed #e5e7eb;border-radius:10px;padding:20px;text-align:center;">
+                  <p style="margin:0;font-weight:700;">📖 ${bookTitle}</p>
+                </div>
+                <p style="margin:24px 0 0;color:#9ca3af;font-size:13px;">شكراً لاستخدامك بُكورا 💜</p>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:24px;border-top:1px solid #f3f4f6;">
+                <p style="margin:0;color:#9ca3af;font-size:12px;">© 2026 بُكورا. جميع الحقوق محفوظة.</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </body>
+    </html>`
+  };
+};
+
 const verifyEmailTemplate = (otp) => ({
     subject: "رمز التحقق الخاص بك — بُكورا",
     html: `
@@ -211,4 +272,4 @@ const sendEmail = async ({ to, subject, html }) => {
     }
 }
 
-module.exports = { sendEmail, verifyEmailTemplate, resetPasswordTemplate };
+module.exports = { sendEmail, verifyEmailTemplate, resetPasswordTemplate, bookRequestStatusTemplate };
