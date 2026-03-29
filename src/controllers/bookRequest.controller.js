@@ -11,9 +11,17 @@ const createRequest = async (req, res) => {
         });
         res.status(201).json({ success: true, data: request });
     } catch (error) {
+        // Handle duplicate pending request (unique index violation)
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "لديك طلب معلق بنفس عنوان الكتاب والمؤلف. يرجى الانتظار حتى تتم مراجعته.",
+            });
+        }
         res.status(400).json({ success: false, message: error.message });
     }
 };
+
 
 // Get all requests (Admin only)
 const getAllRequests = async (req, res) => {

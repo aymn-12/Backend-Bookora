@@ -359,50 +359,84 @@ exports.getBookById = async (req, res) => {
 exports.checkTitleStatus = async (req, res) => {
     try {
         const { q } = req.query;
-        if (!q || q.length < 2) {
+        if (!q || q.trim().length < 4) {
             return res.json({ success: true, isExactDuplicate: false, suggestions: [] });
         }
 
-        const normalized = normalizeArabic(q);
-        
-        // 1. بحث عن مطابقة تامة بعد المعالجة
+        const normalized = normalizeArabic(q.trim());
+
+        // 1. مطابقة تامة بعد معالجة النص
         const exactMatch = await Book.findOne({ normalizedTitle: normalized })
             .select("title author coverImage format")
             .lean();
 
-        // 2. بحث عن اقتراحات مشابهة (Improved token-based search)
-        const stopWords = ["رواية", "روايه", "كتاب", "قصة", "قصه", "تحميل", "مجاني", "مجاناً"];
-        let searchTokens = tokens.filter(t => !stopWords.includes(t));
-        
-        // إذا كان الاستعلام يتكون فقط من "كلمات توقف" (مثل "رواية")، نتركها حتى لا تفرغ مصفوفة البحث
-        if (searchTokens.length === 0) searchTokens = tokens;
-        if (searchTokens.length === 0) searchTokens = cleanQ.split(/\s+/).filter(t => t.length > 0);
-        
-        // إنشاء تعبير منتظم يبحث عن الكلمات كأجزاء مستقلة
-        const regexSearch = searchTokens.map(t => `(${t})`).join("|");
+        if (exactMatch) {
+            return res.json({
+                success: true,
+                isExactDuplicate: true,
+                exactMatch,
+                suggestions: []
+            });
+        }
 
-        const suggestions = await Book.find({ 
-            $or: [
-                { title: { $regex: regexSearch, $options: "i" } },
-                { author: { $regex: regexSearch, $options: "i" } }
-            ],
-            _id: { $ne: exactMatch?._id }
+        // 2. كلمات التوقف — لا قيمة بحثية لها منفردة
+        const STOP_WORDS = new Set([
+            "رواية", "روايه", "كتاب", "كتب", "قصة", "قصه", "قصص",
+            "تحميل", "مجاني", "مجانا", "مجاناً", "مجموعة",
+            "شعر", "ديوان", "أدب", "فن", "علم", "تاريخ", "طب",
+            "في", "من", "إلى", "على", "عن", "مع", "الى",
+            "هذا", "هذه", "ذلك", "أن", "لا", "ما",
+        ]);
+
+        // 3. استخرج الكلمات ذات المعنى (≥ 2 حرف وليست stop word)
+        const rawTokens = normalized
+            .split(/\s+/)
+            .filter(t => t.length >= 2 && !STOP_WORDS.has(t));
+
+        // لا كلمات ذات معنى → لا نبحث
+        if (rawTokens.length === 0) {
+            return res.json({ success: true, isExactDuplicate: false, suggestions: [] });
+        }
+
+        // 4. ابنِ Regex لكل كلمة — AND: يجب أن تظهر كل الكلمات في العنوان
+        const tokenRegexes = rawTokens.map(t => new RegExp(t, "i"));
+
+        const candidates = await Book.find({
+            $and: tokenRegexes.map(rx => ({
+                $or: [
+                    { normalizedTitle: rx },
+                    { title: rx }
+                ]
+            }))
         })
-        .limit(5)
-        .select("title author coverImage format")
+        .limit(10)
+        .select("title author coverImage format normalizedTitle")
         .lean();
+
+        // 5. احسب درجة التشابه: كم كلمة تطابقت + رتّب الأكثر تشابهاً أولاً
+        const scored = candidates
+            .map(book => {
+                const haystack = (book.normalizedTitle || book.title || "").toLowerCase();
+                const matchCount = rawTokens.filter(t => haystack.includes(t)).length;
+                return { ...book, _score: matchCount };
+            })
+            .filter(b => b._score > 0)
+            .sort((a, b) => b._score - a._score)
+            .slice(0, 5)
+            .map(({ _score, normalizedTitle, ...rest }) => rest);
 
         res.json({
             success: true,
-            isExactDuplicate: !!exactMatch,
-            exactMatch,
-            suggestions
+            isExactDuplicate: false,
+            exactMatch: null,
+            suggestions: scored
         });
     } catch (error) {
         console.error("[checkTitleStatus] Error:", error);
         res.status(500).json({ success: false, message: "Error checking title" });
     }
 };
+
 
 // ─── جلب الكتب ذات الصلة
 exports.getRelatedBooks = async (req, res) => {

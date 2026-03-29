@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const { sendEmail, verifyEmailTemplate, resetPasswordTemplate } = require("../services/email.service");
 const { generateOTP, hashOTP, isOTPExpired, generateRefreshToken } = require("../utils/otp.utils");
 const logger = require("../utils/logger.utils");
+const { generateCsrfToken, setCsrfCookie, clearCsrfCookie } = require("../utils/csrf.utils");
 
 const generateToken = (id, role) => {
     return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "10h" });
@@ -26,6 +27,9 @@ const attachTokens = async (user, res) => {
         maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    // ─── CSRF: set readable token alongside the httpOnly refreshToken
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken);
 
     return accessToken;
 };
@@ -288,10 +292,13 @@ exports.refreshToken = async (req, res, next) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
+        // ─── CSRF: rotate CSRF token on each refresh (token rotation)
+        const newCsrfToken = generateCsrfToken();
+        setCsrfCookie(res, newCsrfToken);
 
         const accessToken = generateToken(user._id, user.role);
 
-        res.json({ success: true, accessToken });
+        res.json({ success: true, accessToken, csrfToken: newCsrfToken });
     } catch (error) { next(error); }
 };
 
@@ -388,7 +395,9 @@ exports.logout = async (req, res, next) => {
 
         logger.info("User logged out", { userId: req.user._id });
 
-        res.clearCookie("refreshToken");
+        res.clearCookie("refreshToken", { secure: true, sameSite: "none" });
+        // ─── CSRF: clear the CSRF cookie on logout
+        clearCsrfCookie(res);
         res.json({ success: true, message: "Logged out successfully" });
     } catch (error) { next(error); }
 };

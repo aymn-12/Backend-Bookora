@@ -2,6 +2,7 @@ const User = require("../models/user.models");
 const Book = require("../models/book.models");
 const Review = require("../models/review.models");
 const Category = require("../models/category.models");
+const BookRequest = require("../models/bookRequest.models");
 
 // ─── Dashboard Stats
 exports.getStats = async (req, res, next) => {
@@ -13,6 +14,7 @@ exports.getStats = async (req, res, next) => {
             totalBooks,
             totalReviews,
             totalCategories,
+            totalRequests,
             topBooks,
             recentUsers,
             downloadStats,
@@ -28,6 +30,8 @@ exports.getStats = async (req, res, next) => {
             Review.countDocuments(),
             // إجمالي التصنيفات
             Category.countDocuments(),
+            // إجمالي طلبات الكتب
+            BookRequest.countDocuments(),
             // أكثر 5 كتب تحميلاً
             Book.find().sort({ downloads: -1 }).limit(5).select("title author downloads coverImage"),
             // آخر 5 مستخدمين سجلوا
@@ -48,6 +52,7 @@ exports.getStats = async (req, res, next) => {
                 totalDownloads,
                 totalReviews,
                 totalCategories,
+                totalRequests,
                 topBooks,
                 recentUsers,
             },

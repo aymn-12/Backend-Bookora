@@ -3,6 +3,8 @@ const authController = require("../controllers/auth.controller");
 const authMiddleware = require("../middlewares/OAuth.middlewares");
 const verifiedMiddleware = require("../middlewares/verified.middleware");
 const validate = require("../middlewares/validate.middlewares");
+const csrfMiddleware = require("../middlewares/csrf.middleware");
+const { generateCsrfToken, setCsrfCookie } = require("../utils/csrf.utils");
 const rateLimit = require("express-rate-limit");
 
 const otpLimiter = rateLimit({
@@ -32,12 +34,22 @@ router.post("/resend-otp",      otpLimiter,                                 auth
 router.post("/login",           loginRegisterLimiter, validate(loginSchema),                      authController.login);
 router.post("/forgot-password", otpLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
 router.post("/reset-password",  otpLimiter, validate(resetPasswordSchema),  authController.resetPassword);
-router.post("/refresh-token",                                               authController.refreshToken);
+
+// ─── CSRF Token Endpoint
+// Returns a fresh CSRF token. Call this once on app load if no token exists.
+router.get("/csrf-token", (req, res) => {
+    const token = generateCsrfToken();
+    setCsrfCookie(res, token);
+    res.json({ success: true, csrfToken: token });
+});
+
+// ─── Cookie-dependent Routes (CSRF Protected)
+router.post("/refresh-token", csrfMiddleware,                               authController.refreshToken);
 router.post("/change-password/request", authMiddleware, authController.requestChangePasswordOTP);
 router.post("/change-password/verify", authMiddleware, authController.verifyChangePassword);
 
 // ─── Protected Routes
 router.get("/profile",  authMiddleware, verifiedMiddleware, authController.profile);
-router.post("/logout",  authMiddleware,                     authController.logout);
+router.post("/logout",  authMiddleware, csrfMiddleware,     authController.logout);
 
 module.exports = router;
