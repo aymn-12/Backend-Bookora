@@ -6,6 +6,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const sanitize = require('mongo-sanitize');
 const cookieParser = require("cookie-parser");
+const hpp = require("hpp");
 const authRoutes = require("./routes/auth.routes");
 const bookRoutes = require("./routes/book.routes");
 const categoryRoutes = require("./routes/category.routes");
@@ -65,6 +66,10 @@ const globalLimiter = rateLimit({
 app.use("/api", globalLimiter);
 
 
+app.use(express.json({ limit: "50kb" })); // DoS Protection (Size Limit)
+app.use(express.urlencoded({ extended: true, limit: "50kb" }));
+
+// ─── No-SQL Injection Protection
 app.use((req, res, next) => {
     req.body = sanitize(req.body);
     req.params = sanitize(req.params);
@@ -72,9 +77,8 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
+// ─── HTTP Parameter Pollution Protection
+app.use(hpp());
 // ─── Logging
 app.use(morgan("combined", {
     stream: {
