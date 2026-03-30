@@ -502,8 +502,6 @@ exports.streamBook = async (req, res, next) => {
     
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(book.title)}.pdf"`);
     res.setHeader("Cache-Control", "private, max-age=3600");
-    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "https://bkora.online");
-    res.setHeader("Access-Control-Allow-Credentials", "true");
 
     // ─── Stream مباشرة من Drive للمتصفح
     driveResponse.data
