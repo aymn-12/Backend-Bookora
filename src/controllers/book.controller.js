@@ -3,6 +3,7 @@ const Book = require("../models/book.models");
 const { uploadToDrive, deleteFromDrive, drive } = require("../services/drive.service");
 const Category = require("../models/category.models");
 const Section = require("../models/section.models");
+const ReadingProgress = require("../models/readingProgress.model");
 const { normalizeArabic, generateFileHash } = require("../utils/string.utils");
 
 // ─── إنشاء كتاب جديد
@@ -175,7 +176,49 @@ exports.getAllBook = async (req, res) => {
         });
     } catch (error) {
         console.error("[getAllBook] Error:", error);
-        res.status(500).json({ success: false, message: "عذراً، حدث خطأ أثناء جلب الكتب." });
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء تحميل تفاصيل الكتاب." });
+    }
+};
+
+// ─── Cloud Sync & Bookmarks
+exports.getReadingProgress = async (req, res) => {
+    try {
+        const { id: bookId } = req.params;
+        const userId = req.user._id;
+
+        const progress = await ReadingProgress.findOne({ user: userId, book: bookId });
+        
+        if (!progress) {
+            return res.status(200).json({ success: true, data: { currentPage: 1, bookmarks: [] } });
+        }
+
+        res.status(200).json({ success: true, data: progress });
+    } catch (error) {
+        console.error("Error fetching reading progress:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء جلب تقدم القراءة." });
+    }
+};
+
+exports.updateReadingProgress = async (req, res) => {
+    try {
+        const { id: bookId } = req.params;
+        const userId = req.user._id;
+        const { currentPage, bookmarks } = req.body;
+
+        const updateData = {};
+        if (currentPage !== undefined) updateData.currentPage = currentPage;
+        if (bookmarks !== undefined) updateData.bookmarks = bookmarks; // Array of page numbers
+
+        const progress = await ReadingProgress.findOneAndUpdate(
+            { user: userId, book: bookId },
+            { $set: updateData },
+            { new: true, upsert: true }
+        );
+
+        res.status(200).json({ success: true, data: progress });
+    } catch (error) {
+        console.error("Error updating reading progress:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء تحديث تقدم القراءة." });
     }
 };
 
