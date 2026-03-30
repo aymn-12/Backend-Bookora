@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const Book = require("../models/book.models");
-const { uploadToDrive, deleteFromDrive } = require("../services/drive.service");
+const { uploadToDrive, deleteFromDrive, drive } = require("../services/drive.service");
 const Category = require("../models/category.models");
 const Section = require("../models/section.models");
 const { normalizeArabic, generateFileHash } = require("../utils/string.utils");
@@ -463,4 +463,64 @@ exports.getRelatedBooks = async (req, res) => {
         console.error("[getRelatedBooks] Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
+};
+
+exports.streamBook = async (req, res, next) => {
+  try {
+    const book = await Book.findById(req.params.id);
+    if (!book) {
+      return res.status(404).json({ message: "Book not found" });
+    }
+    if (!book.driveFileId) {
+      return res.status(404).json({ message: "ملف الكتاب غير متوفر" });
+    }
+
+    // تجهيز خيارات الطلب وتمرير الـ Range header إن وجد
+    const options = { responseType: "stream" };
+    if (req.headers.range) {
+      options.headers = { Range: req.headers.range };
+    }
+
+    const driveResponse = await drive.files.get(
+      { fileId: book.driveFileId, alt: "media" },
+      options
+    );
+
+    // نسخ الـ Headers الأساسية من استجابة Google Drive وتمريرها للمتصفح (لدعم الـ Chunking)
+    res.status(driveResponse.status); // 200 (OK) أو 206 (Partial Content)
+    
+    const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+    headersToForward.forEach(h => {
+      if (driveResponse.headers[h]) {
+        res.setHeader(h, driveResponse.headers[h]);
+      }
+    });
+
+    if (!res.getHeader('content-type')) {
+      res.setHeader("Content-Type", "application/pdf");
+    }
+    
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(book.title)}.pdf"`);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "https://bkora.online");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+
+    // ─── Stream مباشرة من Drive للمتصفح
+    driveResponse.data
+      .on("error", (err) => {
+        console.error("[streamBook] Drive stream error:", err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: "فشل تحميل الملف من Drive" });
+        }
+      })
+      .pipe(res);
+
+  } catch (error) {
+    console.error("[streamBook] Error:", error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ message: "حدث خطأ داخلي" });
+    } else {
+      res.end();
+    }
+  }
 };

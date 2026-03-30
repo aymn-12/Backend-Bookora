@@ -7,6 +7,8 @@ const optionalAuth = require("../middlewares/optionalAuth.middlewares");
 const validateMiddleware = require("../middlewares/validate.middlewares");
 const rateLimit = require("express-rate-limit");
 const { updateBookSchema } = require("../validations/book.validation");
+const { streamBook } = require("../controllers/book.controller");
+
 
 const bookLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -36,7 +38,7 @@ router.post("/",
     validateFileSizes,   // ← أضف هذا
     bookCtrl.createBook
 );
-
+router.get("/:id/stream", authMiddleware, streamBook);
 // ─── تعديل البيانات (نصوص + ملفات)
 router.put(
     "/:id",
