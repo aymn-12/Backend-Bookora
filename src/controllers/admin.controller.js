@@ -4,58 +4,69 @@ const Review = require("../models/review.models");
 const Category = require("../models/category.models");
 const BookRequest = require("../models/bookRequest.models");
 
-// ─── Dashboard Stats
+// ─── Dashboard Stats (Advanced Nested Structure)
 exports.getStats = async (req, res, next) => {
     try {
-        const [
-            totalUsers,
-            totalAdmins,
-            totalRegularUsers,
-            totalBooks,
-            totalReviews,
-            totalCategories,
-            totalRequests,
-            topBooks,
-            recentUsers,
-            downloadStats,
-        ] = await Promise.all([
-            // إجمالي المستخدمين المؤكدين
-            User.countDocuments({ isVerified: true }),
-            // إحصائيات الأدوار (مهمة للـ SuperAdmin)
-            User.countDocuments({ isVerified: true, role: "admin" }),
-            User.countDocuments({ isVerified: true, role: "user" }),
-            // إجمالي الكتب
-            Book.countDocuments(),
-            // إجمالي التقييمات
-            Review.countDocuments(),
-            // إجمالي التصنيفات
-            Category.countDocuments(),
-            // إجمالي طلبات الكتب
-            BookRequest.countDocuments(),
-            // أكثر 5 كتب تحميلاً
-            Book.find().sort({ downloads: -1 }).limit(5).select("title author downloads coverImage"),
-            // آخر 5 مستخدمين سجلوا
-            User.find({ isVerified: true }).sort({ createdAt: -1 }).limit(5).select("name email createdAt"),
-            // إجمالي التحميلات لجميع الكتب
-            Book.aggregate([{ $group: { _id: null, total: { $sum: "$downloadCount" } } }]),
-        ]);
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
 
-        const totalDownloads = downloadStats.length > 0 ? downloadStats[0].total : 0;
+        const [
+            overview,
+            newStats,
+            topDownloaded,
+            categoriesDistribution
+        ] = await Promise.all([
+            // 1. Overview Totals
+            (async () => {
+                const [users, admins, regular, books, authors, requests, downloads] = await Promise.all([
+                    User.countDocuments({ isVerified: true }),
+                    User.countDocuments({ isVerified: true, role: "admin" }),
+                    User.countDocuments({ isVerified: true, role: "user" }),
+                    Book.countDocuments(),
+                    Book.distinct("author").then(authors => authors.length),
+                    BookRequest.countDocuments(),
+                    Book.aggregate([{ $group: { _id: null, total: { $sum: "$downloadCount" } } }])
+                ]);
+                return {
+                    totalUsers: users,
+                    totalAdmins: admins,
+                    totalRegularUsers: regular,
+                    totalBooks: books,
+                    totalAuthors: authors,
+                    totalRequests: requests,
+                    totalDownloads: downloads.length > 0 ? downloads[0].total : 0
+                };
+            })(),
+
+            // 2. Today's Activity
+            (async () => {
+                const news = await Book.countDocuments({ createdAt: { $gte: startOfToday } });
+                return { newBooks: news };
+            })(),
+
+            // 3. Top Charts
+            Book.find()
+                .sort({ downloadCount: -1, downloads: -1 })
+                .limit(5)
+                .select("title author downloadCount coverImage"),
+
+            // 4. Category Distribution
+            Book.aggregate([
+                { $unwind: "$categories" },
+                { $group: { _id: "$categories", count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 8 }
+            ])
+        ]);
 
         res.status(200).json({
             success: true,
             data: {
-                totalUsers,
-                totalAdmins,
-                totalRegularUsers,
-                totalBooks,
-                totalDownloads,
-                totalReviews,
-                totalCategories,
-                totalRequests,
-                topBooks,
-                recentUsers,
-            },
+                overview,
+                today: newStats,
+                topCharts: { topDownloaded },
+                distribution: { categories: categoriesDistribution }
+            }
         });
     } catch (error) { next(error); }
 };
