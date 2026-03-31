@@ -50,10 +50,13 @@ exports.getStats = async (req, res, next) => {
                 .limit(5)
                 .select("title author downloadCount coverImage"),
 
-            // 4. Category Distribution
+            // 4. Category Distribution (with Names)
             Book.aggregate([
                 { $unwind: "$categories" },
                 { $group: { _id: "$categories", count: { $sum: 1 } } },
+                { $lookup: { from: "categories", localField: "_id", foreignField: "_id", as: "catInfo" } },
+                { $unwind: "$catInfo" },
+                { $project: { _id: 1, count: 1, name: "$catInfo.name" } },
                 { $sort: { count: -1 } },
                 { $limit: 8 }
             ])

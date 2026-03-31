@@ -14,7 +14,7 @@ exports.createBook = async (req, res, next) => {
     let uploadedCoverId = null;
 
     try {
-        const { title, author, description, categories, sections, format, series, seriesOrder } = req.body;
+        const { title, author, description, categories, sections, format, series, seriesOrder, status } = req.body;
 
         if (!req.files?.bookFile?.[0]) {
             return res.status(400).json({ success: false, message: "ملف الكتاب مطلوب (bookFile)" });
@@ -103,6 +103,7 @@ exports.createBook = async (req, res, next) => {
             normalizedTitle,
             series:       series || null,
             seriesOrder:  seriesOrder || null,
+            status:       status || "published",
             createdBy:    req.user._id,
         });
 
@@ -253,7 +254,9 @@ exports.updateBook = async (req, res, next) => {
             return res.status(403).json({ message: "غير مصرح لك بتعديل هذا الكتاب" });
         }
 
-        const { fileUrl, coverImage, driveFileId, driveCoverId, ...safeFields } = req.body;
+        const { fileUrl, coverImage, driveFileId, driveCoverId, status, ...safeFields } = req.body;
+        
+        if (status) safeFields.status = status;
 
         if (safeFields.categories && !Array.isArray(safeFields.categories)) {
             safeFields.categories = [safeFields.categories];
@@ -411,7 +414,17 @@ exports.getBookById = async (req, res) => {
             .populate("categories", "name")
             .populate("sections", "name icon description")
             .populate("series", "name");
+
         if (!book) return res.status(404).json({ message: "Book not found" });
+
+        // Privacy Check: Only owner or admin can see non-published books
+        const isOwner = req.user && book.createdBy.toString() === req.user._id.toString();
+        const isAdmin = req.user && ["admin", "superadmin"].includes(req.user.role);
+
+        if (book.status !== "published" && !isOwner && !isAdmin) {
+            return res.status(404).json({ message: "يتم العمل حالياً على تجهيز هذا الكتاب." });
+        }
+
         res.status(200).json({ success: true, data: book });
     } catch (error) { res.status(500).json({ message: error.message }); }
 };
@@ -506,9 +519,10 @@ exports.getRelatedBooks = async (req, res) => {
         const book = await Book.findById(id);
         if (!book) return res.status(404).json({ success: false, message: "Book not found" });
 
-        // نجد الكتب التي تشترك في تصنيف واحد على الأقل أو نفس المؤلف
+        // نجد الكتب التي تشترك في تصنيف واحد على الأقل أو نفس المؤلف (المنشورة فقط)
         const related = await Book.find({
             _id: { $ne: id },
+            status: "published",
             $or: [
                 { categories: { $in: book.categories || [] } },
                 { author: book.author }
