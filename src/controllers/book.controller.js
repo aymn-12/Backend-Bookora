@@ -5,6 +5,7 @@ const Category = require("../models/category.models");
 const Section = require("../models/section.models");
 const ReadingProgress = require("../models/readingProgress.model");
 const { normalizeArabic, generateFileHash } = require("../utils/string.utils");
+const { suggestSection } = require("../utils/smartMapper.utils");
 
 // ─── إنشاء كتاب جديد
 exports.createBook = async (req, res, next) => {
@@ -45,7 +46,13 @@ exports.createBook = async (req, res, next) => {
         }
 
         const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories] : [];
-        const sectionsArray = Array.isArray(sections) ? sections : sections ? [sections] : [];
+        let   sectionsArray   = Array.isArray(sections) ? sections : sections ? [sections] : [];
+
+        // ─── التوزيع الذكي إذا لم يتم اختيار قسم
+        if (sectionsArray.length === 0) {
+            const suggestedId = suggestSection(title);
+            sectionsArray = [suggestedId];
+        }
 
         const bookExt        = bookFile.originalname.split('.').pop();
         const cleanBookName  = `${title}.${bookExt}`;
@@ -117,9 +124,17 @@ exports.getAllBook = async (req, res) => {
         const limit = parseInt(req.query.limit) || 12;
         const skip  = (page - 1) * limit;
 
-        const { category, section, format, sort, mine, createdBy, series, ids } = req.query;
+        const { category, section, format, sort, mine, createdBy, series, ids, status } = req.query;
 
         const matchStage = {};
+        
+        // Default filter: only published books, unless specifically requested otherwise
+        if (status) {
+            matchStage.status = status;
+        } else {
+            matchStage.status = "published";
+        }
+
         if (category)  matchStage.categories = new mongoose.Types.ObjectId(category);
         if (section)   matchStage.sections   = new mongoose.Types.ObjectId(section);
         if (format)    matchStage.format      = format;
@@ -134,6 +149,8 @@ exports.getAllBook = async (req, res) => {
             matchStage.createdBy = new mongoose.Types.ObjectId(createdBy);
         } else if (mine === "true" && req.user) {
             matchStage.createdBy = req.user._id;
+            // Remove the default 'published' filter if looking at 'my books' so user can see their drafts
+            delete matchStage.status; 
         }
 
         const sortOptions = {

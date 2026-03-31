@@ -25,14 +25,36 @@ const BookSchema = new mongoose.Schema({
         required: true,
     },
     // ─── تغيير من category واحد إلى categories متعددة
-    categories: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Category",
-    }],
-    sections: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Section",
-    }],
+    categories: {
+        type: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Category",
+        }],
+        validate: {
+            validator: function(v) {
+                return Array.isArray(v) && v.length > 0;
+            },
+            message: "يجب اختيار تصنيف واحد على الأقل للملف"
+        }
+    },
+    sections: {
+        type: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Section",
+        }],
+        validate: {
+            validator: function(v) {
+                return Array.isArray(v) && v.length > 0;
+            },
+            message: "يجب اختيار قسم واحد على الأقل للملف"
+        }
+    },
+    status: {
+        type: String,
+        enum: ["published", "draft", "archived"],
+        default: "published",
+        index: true
+    },
     fileUrl: {
         type: String,
         required: true,
@@ -61,6 +83,7 @@ const BookSchema = new mongoose.Schema({
     downloadCount: {
         type: Number,
         default: 0,
+        index: true
     },
     // ─── السلسلة (اختياري)
     series: {
@@ -82,7 +105,8 @@ const BookSchema = new mongoose.Schema({
         type: Number,
         default: 0,
         min: 0,
-        max: 5
+        max: 5,
+        index: true
     },
     reviewCount: {
         type: Number,
