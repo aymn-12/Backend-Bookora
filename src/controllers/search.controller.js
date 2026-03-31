@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Book     = require("../models/book.models");
 const Series   = require("../models/series.models");
 const Category = require("../models/category.models");
+const { normalizeArabic } = require("../utils/string.utils");
 
 // ─── Popular Searches (في الذاكرة — يُصفَّر عند restart)
 const searchCounts = new Map();
@@ -35,6 +36,14 @@ exports.globalSearch = async (req, res) => {
                         $search: {
                             index: "default",
                             compound: {
+                                filter: [
+                                    {
+                                        text: {
+                                            query: "published",
+                                            path: "status"
+                                        }
+                                    }
+                                ],
                                 should: [
                                     {
                                         text: {
@@ -117,10 +126,14 @@ exports.globalSearch = async (req, res) => {
         }
 
         // ─── Regex Fallback
-        const regex = { $regex: q, $options: "i" };
+        const normalizedQ = normalizeArabic(q);
+        const regex = { $regex: normalizedQ, $options: "i" };
 
         const [books, series, categories] = await Promise.all([
-            Book.find({ $or: [{ title: regex }, { author: regex }, { description: regex }] })
+            Book.find({ 
+                status: "published", 
+                $or: [{ title: regex }, { author: regex }, { normalizedTitle: regex }] 
+            })
                 .limit(12)
                 .populate("categories", "name")
                 .populate("series", "name")
@@ -165,6 +178,7 @@ exports.autocomplete = async (req, res) => {
                     $search: {
                         index: "default",
                         compound: {
+                            filter: [{ text: { query: "published", path: "status" } }],
                             should: [
                                 { autocomplete: { query: q, path: "title", score: { boost: { value: 3 } } } },
                                 { autocomplete: { query: q, path: "author", score: { boost: { value: 2 } } } },
@@ -183,8 +197,12 @@ exports.autocomplete = async (req, res) => {
         } catch {}
 
         // Regex fallback
-        const regex = { $regex: q, $options: "i" };
-        const fallback = await Book.find({ $or: [{ title: regex }, { author: regex }] })
+        const normalizedQ = normalizeArabic(q);
+        const regex = { $regex: normalizedQ, $options: "i" };
+        const fallback = await Book.find({ 
+            status: "published",
+            $or: [{ title: regex }, { author: regex }, { normalizedTitle: regex }] 
+        })
             .limit(5)
             .select("_id title author coverImage")
             .lean();
@@ -218,10 +236,14 @@ exports.getPopularSearches = async (req, res) => {
 const fallbackSearch = async (req, res) => {
     try {
         const q     = req.query.q?.trim();
-        const regex = { $regex: q, $options: "i" };
+        const normalizedQ = normalizeArabic(q);
+        const regex = { $regex: normalizedQ, $options: "i" };
 
         const [books, series, categories] = await Promise.all([
-            Book.find({ $or: [{ title: regex }, { author: regex }] })
+            Book.find({ 
+                status: "published",
+                $or: [{ title: regex }, { author: regex }, { normalizedTitle: regex }] 
+            })
                 .limit(8)
                 .populate("categories", "name")
                 .select("title author coverImage format downloadCount")

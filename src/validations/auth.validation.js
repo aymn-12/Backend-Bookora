@@ -6,8 +6,9 @@ exports.registerSchema = Joi.object({
         "string.empty": "البريد الإلكتروني مطلوب",
         "any.required": "البريد الإلكتروني مطلوب"
     }),
-    password: Joi.string().min(6).required().messages({
-        "string.min": "كلمة المرور يجب أن تكون 6 أحرف على الأقل",
+    password: Joi.string().min(8).pattern(/^(?=.*[a-zA-Z])(?=.*[0-9])/).required().messages({
+        "string.min": "كلمة المرور يجب أن تكون 8 أحرف على الأقل",
+        "string.pattern.base": "كلمة المرور يجب أن تحتوي على حرف ورقم واحد على الأقل",
         "string.empty": "كلمة المرور مطلوبة",
         "any.required": "كلمة المرور مطلوبة"
     }),
@@ -54,8 +55,9 @@ exports.resetPasswordSchema = Joi.object({
         "string.pattern.base": "رمز التحقق يجب أن يحتوي على أرقام فقط",
         "any.required": "رمز التحقق مطلوب"
     }),
-    newPassword: Joi.string().min(6).required().messages({
-        "string.min": "كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل",
+    newPassword: Joi.string().min(8).pattern(/^(?=.*[a-zA-Z])(?=.*[0-9])/).required().messages({
+        "string.min": "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل",
+        "string.pattern.base": "كلمة المرور الجديدة يجب أن تحتوي على حرف ورقم واحد على الأقل",
         "any.required": "كلمة المرور الجديدة مطلوبة"
     }),
 });

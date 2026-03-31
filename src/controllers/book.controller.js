@@ -6,6 +6,7 @@ const Section = require("../models/section.models");
 const ReadingProgress = require("../models/readingProgress.model");
 const { normalizeArabic, generateFileHash } = require("../utils/string.utils");
 const { suggestSection } = require("../utils/smartMapper.utils");
+const sharp = require("sharp");
 
 // ─── إنشاء كتاب جديد
 exports.createBook = async (req, res, next) => {
@@ -60,12 +61,12 @@ exports.createBook = async (req, res, next) => {
 
         let coverBuffer = coverFile.buffer;
         try {
-            const sharp = require("sharp");
             coverBuffer = await sharp(coverFile.buffer)
                 .resize(400, 600, { fit: "cover" })
-                .jpeg({ quality: 80 })
+                .webp({ quality: 80 })
                 .toBuffer();
-        } catch {
+        } catch (error) {
+            console.error("❌ Sharp optimization failed:", error);
             coverBuffer = coverFile.buffer;
         }
 
@@ -78,8 +79,8 @@ exports.createBook = async (req, res, next) => {
             }),
             uploadToDrive({
                 buffer:       coverBuffer,
-                mimetype:     "image/jpeg",
-                originalname: cleanCoverName,
+                mimetype:     "image/webp",
+                originalname: `${title}-cover.webp`,
                 folderId:     process.env.GOOGLE_COVERS_FOLDER_ID,
             }),
         ]);

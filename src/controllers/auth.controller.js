@@ -8,7 +8,7 @@ const logger = require("../utils/logger.utils");
 const { generateCsrfToken, setCsrfCookie, clearCsrfCookie } = require("../utils/csrf.utils");
 
 const generateToken = (id, role) => {
-    return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "10h" });
+    return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
 };
 
 
