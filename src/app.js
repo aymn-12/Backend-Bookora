@@ -24,6 +24,9 @@ const { errorHandler, notFound } = require("./middlewares/error.middleware");
 
 const app = express();
 
+// Trust proxy is required for rate limiting on platforms like Render/Heroku
+app.set("trust proxy", 1);
+
 // ─── General Middleware
 const allowedOrigins = [
     "http://localhost:3000",
