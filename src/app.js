@@ -19,6 +19,7 @@ const bookRequestRoutes = require("./routes/bookRequest.routes");
 const searchRoutes = require("./routes/search.routes");
 const statsRoutes = require("./routes/stats.routes");
 const downloadRoutes = require("./routes/download.routes");
+const proxyRoutes = require("./routes/proxy.routes");
 
 const { errorHandler, notFound } = require("./middlewares/error.middleware");
 
@@ -104,6 +105,7 @@ app.use("/api/sections",   sectionRoutes);
 app.use("/api/requests", bookRequestRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/proxy", proxyRoutes);
 
 // ─── Static Files
 app.use("/uploads", express.static("uploads"));
