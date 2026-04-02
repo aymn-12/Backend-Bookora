@@ -1,10 +1,10 @@
+// src/controllers/search.controller.js
 const mongoose = require("mongoose");
 const Book     = require("../models/book.models");
 const Series   = require("../models/series.models");
 const Category = require("../models/category.models");
 const { normalizeArabic } = require("../utils/string.utils");
 
-// ─── Popular Searches (في الذاكرة — يُصفَّر عند restart)
 const searchCounts = new Map();
 
 const saveSearchQuery = (q) => {
@@ -28,7 +28,6 @@ exports.globalSearch = async (req, res) => {
 
         saveSearchQuery(q);
 
-        // جرّب Atlas Search أولاً
         try {
             const [books, series, categories] = await Promise.all([
                 Book.aggregate([
@@ -36,29 +35,39 @@ exports.globalSearch = async (req, res) => {
                         $search: {
                             index: "default",
                             compound: {
+                                // ✅ filter بدل must — لا يؤثر على الـ score ومضبوط للقيم الثابتة
                                 filter: [
                                     {
-                                        text: {
-                                            query: "published",
-                                            path: "status"
+                                        equals: {
+                                            path: "status",
+                                            value: "published"
                                         }
                                     }
                                 ],
+                                // ✅ should مع boost يعطي أولوية للعنوان
                                 should: [
                                     {
                                         text: {
                                             query: q,
                                             path: "title",
                                             score: { boost: { value: 10 } },
-                                            fuzzy: { maxEdits: 1, prefixLength: 3 },
+                                            fuzzy: { maxEdits: 1, prefixLength: 2 },
+                                        },
+                                    },
+                                    {
+                                        text: {
+                                            query: q,
+                                            path: "normalizedTitle",
+                                            score: { boost: { value: 8 } },
+                                            fuzzy: { maxEdits: 1, prefixLength: 2 },
                                         },
                                     },
                                     {
                                         text: {
                                             query: q,
                                             path: "author",
-                                            score: { boost: { value: 6 } },
-                                            fuzzy: { maxEdits: 1, prefixLength: 3 },
+                                            score: { boost: { value: 5 } },
+                                            fuzzy: { maxEdits: 1, prefixLength: 2 },
                                         },
                                     },
                                     {
@@ -71,20 +80,42 @@ exports.globalSearch = async (req, res) => {
                                 ],
                                 minimumShouldMatch: 1,
                             },
+                            // ✅ إبراز النص المطابق
+                            highlight: {
+                                path: ["title", "author"]
+                            }
                         },
                     },
                     { $limit: 12 },
-                    { $lookup: { from: "categories", localField: "categories", foreignField: "_id", as: "categories" } },
-                    { $lookup: { from: "series", localField: "series", foreignField: "_id", as: "seriesData" } },
+                    {
+                        $lookup: {
+                            from: "categories",
+                            localField: "categories",
+                            foreignField: "_id",
+                            as: "categories"
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: "series",
+                            localField: "series",
+                            foreignField: "_id",
+                            as: "seriesData"
+                        }
+                    },
                     { $unwind: { path: "$seriesData", preserveNullAndEmptyArrays: true } },
                     {
                         $project: {
-                            title: 1, author: 1, coverImage: 1,
-                            format: 1, downloadCount: 1,
+                            title: 1,
+                            author: 1,
+                            coverImage: 1,
+                            format: 1,
+                            downloadCount: 1,
                             categories: { _id: 1, name: 1 },
-                            series: "$seriesData.name",
+                            series: "$seriesData",
                             seriesOrder: 1,
                             score: { $meta: "searchScore" },
+                            highlights: { $meta: "searchHighlights" },
                         },
                     },
                 ]),
@@ -109,7 +140,6 @@ exports.globalSearch = async (req, res) => {
                 ).limit(4).lean(),
             ]);
 
-            // لو Atlas رجع نتائج استخدمها
             if (books.length > 0) {
                 return res.status(200).json({
                     success: true,
@@ -118,11 +148,10 @@ exports.globalSearch = async (req, res) => {
                 });
             }
 
-            // لو Atlas فارغ — استخدم regex fallback
-            throw new Error("Atlas returned empty — trying fallback");
+            throw new Error("Atlas empty — fallback");
 
         } catch (atlasError) {
-            console.warn("[globalSearch] Atlas failed or empty, using regex fallback:", atlasError.message);
+            console.warn("[globalSearch] Atlas fallback:", atlasError.message);
         }
 
         // ─── Regex Fallback
@@ -130,24 +159,30 @@ exports.globalSearch = async (req, res) => {
         const regex = { $regex: normalizedQ, $options: "i" };
 
         const [books, series, categories] = await Promise.all([
-            Book.find({ 
-                status: "published", 
-                $or: [{ title: regex }, { author: regex }, { normalizedTitle: regex }] 
+            Book.find({
+                status: "published",
+                $or: [
+                    { title: regex },
+                    { author: regex },
+                    { normalizedTitle: regex }
+                ]
             })
                 .limit(12)
                 .populate("categories", "name")
                 .populate("series", "name")
                 .select("title author coverImage format downloadCount categories series seriesOrder")
                 .lean(),
+
             Series.find({ name: regex }).limit(4)
                 .select("name")
                 .lean()
-                .then(async (list) => {
-                    return Promise.all(list.map(async (s) => ({
+                .then(list =>
+                    Promise.all(list.map(async s => ({
                         ...s,
                         booksCount: await Book.countDocuments({ series: s._id }),
-                    })));
-                }),
+                    })))
+                ),
+
             Category.find({ name: regex }, { name: 1 }).limit(4).lean(),
         ]);
 
@@ -158,7 +193,7 @@ exports.globalSearch = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("[globalSearch] Fatal error:", error.message);
+        console.error("[globalSearch] Fatal:", error.message);
         res.status(500).json({ success: false, message: "حدث خطأ في البحث" });
     }
 };
@@ -169,25 +204,56 @@ exports.globalSearch = async (req, res) => {
 exports.autocomplete = async (req, res) => {
     try {
         const q = req.query.q?.trim();
-        if (!q || q.length < 2) return res.status(200).json({ success: true, data: [] });
+        if (!q || q.length < 2) {
+            return res.status(200).json({ success: true, data: [] });
+        }
 
-        // جرّب Atlas أولاً
         try {
             const suggestions = await Book.aggregate([
                 {
                     $search: {
-                        index: "default",
+                        index: "books_search",
                         compound: {
-                            filter: [{ text: { query: "published", path: "status" } }],
-                            should: [
-                                { autocomplete: { query: q, path: "title", score: { boost: { value: 3 } } } },
-                                { autocomplete: { query: q, path: "author", score: { boost: { value: 2 } } } },
+                            // ✅ استخدام equals للـ filter بدل text
+                            filter: [
+                                {
+                                    equals: {
+                                        path: "status",
+                                        value: "published"
+                                    }
+                                }
                             ],
+                            should: [
+                                {
+                                    autocomplete: {
+                                        query: q,
+                                        path: "title",
+                                        score: { boost: { value: 3 } },
+                                        fuzzy: { maxEdits: 1 }
+                                    }
+                                },
+                                {
+                                    autocomplete: {
+                                        query: q,
+                                        path: "author",
+                                        score: { boost: { value: 2 } }
+                                    }
+                                },
+                            ],
+                            minimumShouldMatch: 1,
                         },
                     },
                 },
-                { $limit: 5 },
-                { $project: { _id: 1, title: 1, author: 1, coverImage: 1 } },
+                { $limit: 6 },
+                {
+                    $project: {
+                        _id: 1,
+                        title: 1,
+                        author: 1,
+                        coverImage: 1,
+                        score: { $meta: "searchScore" }
+                    }
+                },
             ]);
 
             if (suggestions.length > 0) {
@@ -199,11 +265,15 @@ exports.autocomplete = async (req, res) => {
         // Regex fallback
         const normalizedQ = normalizeArabic(q);
         const regex = { $regex: normalizedQ, $options: "i" };
-        const fallback = await Book.find({ 
+        const fallback = await Book.find({
             status: "published",
-            $or: [{ title: regex }, { author: regex }, { normalizedTitle: regex }] 
+            $or: [
+                { title: regex },
+                { author: regex },
+                { normalizedTitle: regex }
+            ]
         })
-            .limit(5)
+            .limit(6)
             .select("_id title author coverImage")
             .lean();
 
@@ -215,7 +285,7 @@ exports.autocomplete = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
-// Popular Searches — GET /api/search/popular
+// Popular Searches
 // ─────────────────────────────────────────
 exports.getPopularSearches = async (req, res) => {
     try {
@@ -227,37 +297,5 @@ exports.getPopularSearches = async (req, res) => {
         res.status(200).json({ success: true, data: sorted });
     } catch (error) {
         res.status(500).json({ success: false, message: "حدث خطأ" });
-    }
-};
-
-// ─────────────────────────────────────────
-// Fallback — regex لو Atlas معطل
-// ─────────────────────────────────────────
-const fallbackSearch = async (req, res) => {
-    try {
-        const q     = req.query.q?.trim();
-        const normalizedQ = normalizeArabic(q);
-        const regex = { $regex: normalizedQ, $options: "i" };
-
-        const [books, series, categories] = await Promise.all([
-            Book.find({ 
-                status: "published",
-                $or: [{ title: regex }, { author: regex }, { normalizedTitle: regex }] 
-            })
-                .limit(8)
-                .populate("categories", "name")
-                .select("title author coverImage format downloadCount")
-                .lean(),
-            Series.find({ name: regex }).limit(4).lean(),
-            Category.find({ name: regex }, { name: 1 }).limit(4).lean(),
-        ]);
-
-        res.status(200).json({
-            success: true,
-            query: q,
-            data: { books, series, categories },
-        });
-    } catch (err) {
-        res.status(500).json({ success: false, message: "حدث خطأ في البحث" });
     }
 };
