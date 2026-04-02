@@ -6,3 +6,4 @@ node_modules
 /src/get-token.js
 /src/get-code.js
 /src/seedBooks.js
+/scripts

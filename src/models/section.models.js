@@ -15,6 +15,12 @@ const SectionSchema = new mongoose.Schema({
         type: String,
         trim: true,
         default: ""
+    },
+    parent: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Section",
+        default: null,
+        index: true
     }
 }, {timestamps : true})
 

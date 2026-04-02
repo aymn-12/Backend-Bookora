@@ -119,52 +119,104 @@ exports.createBook = async (req, res, next) => {
     }
 };
 
-// ─── عرض كل الكتب
+// ─── عرض كل الكتب (مُحسن)
 exports.getAllBook = async (req, res) => {
     try {
         const page  = parseInt(req.query.page)  || 1;
-        const limit = parseInt(req.query.limit) || 12;
+        const limit = Math.min(parseInt(req.query.limit) || 12, 100);
         const skip  = (page - 1) * limit;
 
-        const { category, section, format, sort, mine, createdBy, series, ids, status } = req.query;
+        const { 
+            category, section, format, sort, mine, createdBy, 
+            series, ids, status, 
+            q, author, minDownloads, maxDownloads,
+            dateFrom, dateTo, searchIn
+        } = req.query;
 
         const matchStage = {};
         
-        // Default filter: only published books, unless specifically requested otherwise
+        // التحقق من صحة الـ IDs لتجنب توقف السيرفر
+        const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
+
         if (status) {
             matchStage.status = status;
         } else {
             matchStage.status = "published";
         }
 
-        if (category)  matchStage.categories = new mongoose.Types.ObjectId(category);
-        if (section)   matchStage.sections   = new mongoose.Types.ObjectId(section);
-        if (format)    matchStage.format      = format;
-        if (series)    matchStage.series      = new mongoose.Types.ObjectId(series);
+        if (category && isValidId(category)) matchStage.categories = new mongoose.Types.ObjectId(category);
+        if (section && isValidId(section))   matchStage.sections   = new mongoose.Types.ObjectId(section);
+        if (format) matchStage.format = format;
+        if (series && isValidId(series))     matchStage.series     = new mongoose.Types.ObjectId(series);
+        
+        if (createdBy && isValidId(createdBy)) {
+            matchStage.createdBy = new mongoose.Types.ObjectId(createdBy);
+        } else if (mine === "true" && req.user) {
+            matchStage.createdBy = req.user._id;
+            delete matchStage.status; // السماح للمالك برؤية مسوداته
+        }
+
+        // فلاتر المدى (Range Filters)
+        if (minDownloads || maxDownloads) {
+            matchStage.downloadCount = {};
+            if (minDownloads) matchStage.downloadCount.$gte = parseInt(minDownloads);
+            if (maxDownloads) matchStage.downloadCount.$lte = parseInt(maxDownloads);
+        }
+        
+        if (dateFrom || dateTo) {
+            matchStage.createdAt = {};
+            if (dateFrom) matchStage.createdAt.$gte = new Date(dateFrom);
+            if (dateTo) matchStage.createdAt.$lte = new Date(dateTo);
+        }
+
+        // البحث عن المؤلف (جزئي)
+        if (author) {
+            matchStage.author = { $regex: author, $options: "i" };
+        }
+
         if (ids) {
-            const idsArray = ids.split(",").filter(id => mongoose.Types.ObjectId.isValid(id));
+            const idsArray = ids.split(",").filter(id => isValidId(id));
             if (idsArray.length > 0) {
                 matchStage._id = { $in: idsArray.map(id => new mongoose.Types.ObjectId(id)) };
             }
         }
-        if (createdBy) {
-            matchStage.createdBy = new mongoose.Types.ObjectId(createdBy);
-        } else if (mine === "true" && req.user) {
-            matchStage.createdBy = req.user._id;
-            // Remove the default 'published' filter if looking at 'my books' so user can see their drafts
-            delete matchStage.status; 
+
+        // البحث النصي الشامل وتحديد الحقول
+        let searchUsed = false;
+        if (q && q.trim()) {
+            const searchFields = searchIn ? searchIn.split(",") : ["title", "author", "description"];
+            const isTextSearchable = searchFields.every(f => ["title", "author", "description"].includes(f));
+            
+            if (isTextSearchable) {
+                matchStage.$text = { $search: q };
+                searchUsed = true;
+            } else {
+                // البحث باستخدام Regex في الحقول المخصصة
+                const sanitizedQuery = q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const orConditions = searchFields.map(field => ({
+                    [field]: { $regex: sanitizedQuery, $options: "i" }
+                }));
+                matchStage.$or = orConditions;
+            }
         }
 
         const sortOptions = {
             newest:    { createdAt: -1, _id: -1 },
+            oldest:    { createdAt: 1, _id: 1 },
             downloads: { downloadCount: -1, _id: -1 },
             rating:    { averageRating: -1, reviewCount: -1, _id: -1 },
             title:     { title: 1, _id: -1 },
         };
-        const sortBy = sortOptions[sort] || sortOptions.newest;
+        
+        // الترتيب حسب صلة البحث (score) إذا تم استخدام البحث النصي
+        let sortBy = sortOptions[sort] || sortOptions.newest;
+        if (searchUsed) {
+            sortBy = { score: { $meta: "textScore" }, ...sortBy };
+        }
 
         const pipeline = [
-            ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
+            { $match: matchStage },
+            ...(searchUsed ? [{ $addFields: { score: { $meta: "textScore" } } }] : []),
             { $sort: sortBy },
             {
                 $facet: {
@@ -178,7 +230,7 @@ exports.getAllBook = async (req, res) => {
                         { $unwind: { path: "$seriesData", preserveNullAndEmptyArrays: true } },
                         { $lookup: { from: "users",      localField: "createdBy",  foreignField: "_id", as: "createdBy" } },
                         { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
-                        { $project: { "createdBy.password": 0, "createdBy.refreshToken": 0, "createdBy.resetOtp": 0 } },
+                        { $project: { "createdBy.password": 0, "createdBy.refreshToken": 0, "createdBy.resetOtp": 0, score: 0 } },
                     ],
                 },
             },
@@ -191,13 +243,21 @@ exports.getAllBook = async (req, res) => {
         res.status(200).json({
             success: true,
             data: books,
-            meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+            meta: { 
+                total, 
+                page, 
+                limit, 
+                totalPages: Math.ceil(total / limit),
+                hasNextPage: page * limit < total,
+                hasPrevPage: page > 1
+            },
         });
     } catch (error) {
         console.error("[getAllBook] Error:", error);
-        res.status(500).json({ success: false, message: "حدث خطأ أثناء تحميل تفاصيل الكتاب." });
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء تحميل الكتب." });
     }
 };
+
 
 // ─── Cloud Sync & Bookmarks
 exports.getReadingProgress = async (req, res) => {
