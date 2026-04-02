@@ -119,5 +119,7 @@ BookSchema.index({ createdBy: 1 });
 BookSchema.index({ categories: 1 });
 BookSchema.index({ sections: 1 });
 BookSchema.index({ series: 1 });
+BookSchema.index({ status: 1, createdAt: -1 });
+BookSchema.index({ status: 1, downloadCount: -1 });
 
 module.exports = mongoose.model("Book", BookSchema);
