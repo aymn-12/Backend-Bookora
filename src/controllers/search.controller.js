@@ -33,9 +33,8 @@ exports.globalSearch = async (req, res) => {
                 Book.aggregate([
                     {
                         $search: {
-                            index: "default",
+                            index: "books_search",
                             compound: {
-                                // ✅ filter بدل must — لا يؤثر على الـ score ومضبوط للقيم الثابتة
                                 filter: [
                                     {
                                         equals: {
@@ -44,7 +43,6 @@ exports.globalSearch = async (req, res) => {
                                         }
                                     }
                                 ],
-                                // ✅ should مع boost يعطي أولوية للعنوان
                                 should: [
                                     {
                                         text: {
@@ -80,7 +78,6 @@ exports.globalSearch = async (req, res) => {
                                 ],
                                 minimumShouldMatch: 1,
                             },
-                            // ✅ إبراز النص المطابق
                             highlight: {
                                 path: ["title", "author"]
                             }
@@ -214,7 +211,6 @@ exports.autocomplete = async (req, res) => {
                     $search: {
                         index: "books_search",
                         compound: {
-                            // ✅ استخدام equals للـ filter بدل text
                             filter: [
                                 {
                                     equals: {
