@@ -8,7 +8,7 @@ const logger = require("../utils/logger.utils");
 const { generateCsrfToken, setCsrfCookie, clearCsrfCookie } = require("../utils/csrf.utils");
 
 const generateToken = (id, role) => {
-    return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
 
@@ -24,7 +24,7 @@ const attachTokens = async (user, res) => {
         httpOnly: true,
         secure: true, // Required for sameSite: "none"
         sameSite: "none", // Allows cookies between Vercel and Render
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     // ─── CSRF: set readable token alongside the httpOnly refreshToken
@@ -162,7 +162,7 @@ exports.login = async (req, res, next) => {
 
         if (!(await bcrypt.compare(password, user.password))) {
             logger.warn("Login attempt with wrong password", { email });
-            return res.status(401).json({ success: false, message: "البريد الإلكتروني أو كلمة المرور غير صحيحة" });
+            return res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
         }
 
         if (!user.isVerified) {
@@ -278,7 +278,7 @@ exports.refreshToken = async (req, res, next) => {
 
         if (!user) {
             logger.warn("Invalid refresh token attempt");
-            return res.status(401).json({ message: "Invalid refresh token" });
+            return res.status(401).json({ message: "جلسة التحديث غير صالحة" });
         }
 
         const newRefreshToken = generateRefreshToken();
@@ -289,7 +289,7 @@ exports.refreshToken = async (req, res, next) => {
             httpOnly: true,
             secure: true, // Required for sameSite: "none"
             sameSite: "none", // Allows cookies between Vercel and Render
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
         });
 
         // ─── CSRF: rotate CSRF token on each refresh (token rotation)
@@ -308,7 +308,7 @@ exports.profile = async (req, res, next) => {
         const user = await User.findById(req.user._id).select("-password -__v -refreshToken -resetOtp -resetOtpExpires");
 
         if (!user)
-            return res.status(404).json({ success: false, message: "User not found" });
+            return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
 
         res.status(200).json({ success: true, data: user });
     } catch (error) { next(error); }
@@ -320,7 +320,7 @@ exports.requestChangePasswordOTP = async (req, res, next) => {
         const { oldPassword } = req.body;
         const user = await User.findById(req.user._id);
         
-        if (!user) return res.status(404).json({ message: "User not found" });
+        if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
         // التأكد من كلمة المرور القديمة أولاً
         const isMatch = await bcrypt.compare(oldPassword, user.password);
         if (!isMatch) {
@@ -344,7 +344,7 @@ exports.verifyChangePassword = async (req, res, next) => {
     try {
         const { otp, newPassword } = req.body;
         const user = await User.findById(req.user._id);
-        if (!user) return res.status(404).json({ message: "User not found" });
+        if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
         // التأكد من صلاحية הـ OTP
         if (isOTPExpired(user.resetOtpExpires)) {
             user.resetOtp = undefined;
@@ -362,12 +362,12 @@ exports.verifyChangePassword = async (req, res, next) => {
                 user.attempts = 0;
                 await user.save();
                 logger.warn("Too many reset attempts", { email });
-                return res.status(400).json({ message: "Too many attempts. Request a new OTP." });
+                return res.status(400).json({ message: "محاولات كثيرة خاطئة. يرجى طلب رمز جديد." });
             }
 
             await user.save();
             return res.status(400).json({
-                message: "Invalid OTP",
+                message: "رمز التحقق غير صحيح",
                 remainingAttempts: 5 - user.attempts,
             });
         }
@@ -398,6 +398,6 @@ exports.logout = async (req, res, next) => {
         res.clearCookie("refreshToken", { secure: true, sameSite: "none" });
         // ─── CSRF: clear the CSRF cookie on logout
         clearCsrfCookie(res);
-        res.json({ success: true, message: "Logged out successfully" });
+        res.json({ success: true, message: "تم تسجيل الخروج بنجاح" });
     } catch (error) { next(error); }
 };

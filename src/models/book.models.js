@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const BookSchema = new mongoose.Schema({
     title: {
         type: String,
-        required: true,
+        required: [true, "عنوان الكتاب مطلوب"],
         unique: true,
         trim: true,
     },
@@ -18,11 +18,11 @@ const BookSchema = new mongoose.Schema({
     },
     author: {
         type: String,
-        required: true,
+        required: [true, "اسم المؤلف مطلوب"],
     },
     description: {
         type: String,
-        required: true,
+        required: [true, "وصف الكتاب مطلوب"],
     },
     // ─── تغيير من category واحد إلى categories متعددة
     categories: {
