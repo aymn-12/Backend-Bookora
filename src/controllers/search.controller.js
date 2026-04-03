@@ -4,12 +4,15 @@ const Book     = require("../models/book.models");
 const Series   = require("../models/series.models");
 const Category = require("../models/category.models");
 const { normalizeArabic } = require("../utils/string.utils");
+const xss = require('xss');
 
 const searchCounts = new Map();
 
 const saveSearchQuery = (q) => {
-    const key = q.toLowerCase().trim();
-    searchCounts.set(key, (searchCounts.get(key) || 0) + 1);
+    const clean = xss(q.toLowerCase().trim());
+    if (/<|>|script|javascript|alert/i.test(clean)) return;
+    if (clean.length > 100) return;
+    searchCounts.set(clean, (searchCounts.get(clean) || 0) + 1);
 };
 
 // ─────────────────────────────────────────
@@ -19,10 +22,10 @@ exports.globalSearch = async (req, res) => {
     try {
         const q = req.query.q?.trim();
 
-        if (!q || q.length < 2) {
+        if (q && /<|>|script|javascript/i.test(q)) {
             return res.status(200).json({
                 success: true,
-                data: { books: [], series: [], categories: [] },
+                data: { books: [], series: [], categories: [] }
             });
         }
 

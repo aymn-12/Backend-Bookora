@@ -19,6 +19,8 @@ const bookRequestRoutes = require("./routes/bookRequest.routes");
 const searchRoutes = require("./routes/search.routes");
 const statsRoutes = require("./routes/stats.routes");
 const downloadRoutes = require("./routes/download.routes");
+const xssClean = require('xss-clean');
+
 
 const { errorHandler, notFound } = require("./middlewares/error.middleware");
 
@@ -79,6 +81,7 @@ app.use((req, res, next) => {
     req.query = sanitize(req.query);
     next();
 });
+app.use(xssClean());
 
 // ─── HTTP Parameter Pollution Protection
 app.use(hpp());
