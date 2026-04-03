@@ -44,18 +44,26 @@ exports.globalSearch = async (req, res) => {
                                     }
                                 ],
                                 should: [
+                                    // ✅ تطابق الجمل (Phrase Matching) يعطي أعلى أولوية
+                                    {
+                                        phrase: {
+                                            query: q,
+                                            path: "title",
+                                            score: { boost: { value: 15 } }
+                                        }
+                                    },
+                                    {
+                                        phrase: {
+                                            query: q,
+                                            path: "normalizedTitle",
+                                            score: { boost: { value: 12 } }
+                                        }
+                                    },
+                                    // ✅ البحث النصي التقليدي مع تصحيح الأخطاء
                                     {
                                         text: {
                                             query: q,
                                             path: "title",
-                                            score: { boost: { value: 10 } },
-                                            fuzzy: { maxEdits: 1, prefixLength: 2 },
-                                        },
-                                    },
-                                    {
-                                        text: {
-                                            query: q,
-                                            path: "normalizedTitle",
                                             score: { boost: { value: 8 } },
                                             fuzzy: { maxEdits: 1, prefixLength: 2 },
                                         },
@@ -63,9 +71,17 @@ exports.globalSearch = async (req, res) => {
                                     {
                                         text: {
                                             query: q,
-                                            path: "author",
-                                            score: { boost: { value: 5 } },
+                                            path: "normalizedTitle",
+                                            score: { boost: { value: 6 } },
                                             fuzzy: { maxEdits: 1, prefixLength: 2 },
+                                        },
+                                    },
+                                    {
+                                        text: {
+                                            query: q,
+                                            path: "author",
+                                            score: { boost: { value: 4 } },
+                                            fuzzy: { maxEdits: 1 }
                                         },
                                     },
                                     {
@@ -224,7 +240,7 @@ exports.autocomplete = async (req, res) => {
                                     autocomplete: {
                                         query: q,
                                         path: "title",
-                                        score: { boost: { value: 3 } },
+                                        score: { boost: { value: 5 } },
                                         fuzzy: { maxEdits: 1 }
                                     }
                                 },
@@ -232,7 +248,7 @@ exports.autocomplete = async (req, res) => {
                                     autocomplete: {
                                         query: q,
                                         path: "author",
-                                        score: { boost: { value: 2 } }
+                                        score: { boost: { value: 3 } }
                                     }
                                 },
                             ],
