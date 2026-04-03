@@ -53,10 +53,11 @@ const uploadToDrive = async ({ buffer, mimetype, originalname, folderId }) => {
             mimeType: mimetype,
             body: stream,
         },
-        fields: "id, name",
+        fields: "id, name, thumbnailLink, webViewLink",
     });
 
     const fileId = res.data.id;
+    const thumbnailLink = res.data.thumbnailLink;
 
     // ─── اجعل الملف قابل للقراءة لأي شخص عنده الرابط
     await drive.permissions.create({
@@ -70,7 +71,8 @@ const uploadToDrive = async ({ buffer, mimetype, originalname, folderId }) => {
     return {
         fileId,
         fileUrl:    `https://drive.google.com/uc?export=download&id=${fileId}`,
-        previewUrl: `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`,
+        // استخدام الرابط المباشر للمصغر لو توفر، وإلا نستخدم الرابط المعدل
+        previewUrl: thumbnailLink ? thumbnailLink.replace(/=s220$/, "=s1000") : `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`,
     };
 };
 

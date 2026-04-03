@@ -62,8 +62,8 @@ exports.createBook = async (req, res, next) => {
         let coverBuffer = coverFile.buffer;
         try {
             coverBuffer = await sharp(coverFile.buffer)
-                .resize(400, 600, { fit: "cover" })
-                .webp({ quality: 80 })
+                .resize(600, 900, { fit: "cover" })
+                .jpeg({ quality: 90 })
                 .toBuffer();
         } catch (error) {
             console.error("❌ Sharp optimization failed:", error);
@@ -79,8 +79,8 @@ exports.createBook = async (req, res, next) => {
             }),
             uploadToDrive({
                 buffer:       coverBuffer,
-                mimetype:     "image/webp",
-                originalname: `${title}-cover.webp`,
+                mimetype:     "image/jpeg",
+                originalname: `${title}-cover.jpg`,
                 folderId:     process.env.GOOGLE_COVERS_FOLDER_ID,
             }),
         ]);
@@ -380,8 +380,8 @@ exports.updateBook = async (req, res, next) => {
             try {
                 const sharp = require("sharp");
                 coverBuffer = await sharp(coverFile.buffer)
-                    .resize(400, 600, { fit: "cover" })
-                    .jpeg({ quality: 80 })
+                    .resize(600, 900, { fit: "cover" })
+                    .jpeg({ quality: 90 })
                     .toBuffer();
             } catch {
                 coverBuffer = coverFile.buffer;
