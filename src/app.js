@@ -19,7 +19,7 @@ const bookRequestRoutes = require("./routes/bookRequest.routes");
 const searchRoutes = require("./routes/search.routes");
 const statsRoutes = require("./routes/stats.routes");
 const downloadRoutes = require("./routes/download.routes");
-const xssClean = require('xss-clean');
+const xss = require("xss");
 
 
 const { errorHandler, notFound } = require("./middlewares/error.middleware");
@@ -74,14 +74,43 @@ app.use("/api", globalLimiter);
 app.use(express.json({ limit: "50kb" })); // DoS Protection (Size Limit)
 app.use(express.urlencoded({ extended: true, limit: "50kb" }));
 
-// ─── No-SQL Injection Protection
+// ─── No-SQL Injection & XSS Protection
 app.use((req, res, next) => {
-    req.body = sanitize(req.body);
-    req.params = sanitize(req.params);
-    req.query = sanitize(req.query);
+    // Helper to recursively clean XSS (XSS protection)
+    const cleanXSS = (obj) => {
+        if (!obj || typeof obj !== "object" || obj === null) {
+            return (typeof obj === "string") ? xss(obj) : obj;
+        }
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                obj[key] = cleanXSS(obj[key]);
+            }
+        }
+        return obj;
+    };
+
+    // 1. Sanitize for NoSQL Injection (mongo-sanitize)
+    // In Express 5, req.query is a getter. We modify it without reassignment.
+    
+    // Sanitize Body (Usually settable)
+    if (req.body) req.body = sanitize(req.body);
+
+    // Sanitize Query & Params in-place (Express 5 compatibility)
+    const sQuery = sanitize(req.query);
+    Object.keys(req.query).forEach(key => delete req.query[key]);
+    Object.assign(req.query, sQuery);
+
+    const sParams = sanitize(req.params);
+    Object.keys(req.params).forEach(key => delete req.params[key]);
+    Object.assign(req.params, sParams);
+
+    // 2. Deep Sanitization for XSS
+    cleanXSS(req.body);
+    cleanXSS(req.query);
+    cleanXSS(req.params);
+
     next();
 });
-app.use(xssClean());
 
 // ─── HTTP Parameter Pollution Protection
 app.use(hpp());
