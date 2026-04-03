@@ -35,16 +35,8 @@ exports.globalSearch = async (req, res) => {
                         $search: {
                             index: "books_search",
                             compound: {
-                                filter: [
-                                    {
-                                        equals: {
-                                            path: "status",
-                                            value: "published"
-                                        }
-                                    }
-                                ],
                                 should: [
-                                    // ✅ تطابق الجمل (Phrase Matching) يعطي أعلى أولوية
+                                    // ✅ تطابق الجمل (Phrase Matching)
                                     {
                                         phrase: {
                                             query: q,
@@ -52,27 +44,12 @@ exports.globalSearch = async (req, res) => {
                                             score: { boost: { value: 15 } }
                                         }
                                     },
-                                    {
-                                        phrase: {
-                                            query: q,
-                                            path: "normalizedTitle",
-                                            score: { boost: { value: 12 } }
-                                        }
-                                    },
-                                    // ✅ البحث النصي التقليدي مع تصحيح الأخطاء
+                                    // ✅ البحث النصي التقليدي
                                     {
                                         text: {
                                             query: q,
                                             path: "title",
                                             score: { boost: { value: 8 } },
-                                            fuzzy: { maxEdits: 1, prefixLength: 2 },
-                                        },
-                                    },
-                                    {
-                                        text: {
-                                            query: q,
-                                            path: "normalizedTitle",
-                                            score: { boost: { value: 6 } },
                                             fuzzy: { maxEdits: 1, prefixLength: 2 },
                                         },
                                     },
@@ -98,6 +75,12 @@ exports.globalSearch = async (req, res) => {
                                 path: ["title", "author"]
                             }
                         },
+                    },
+                    // ✅ تصفية النتائج المنشورة فقط (خارج السيرش لأن الحقل غير مفهرس)
+                    {
+                        $match: {
+                            status: "published"
+                        }
                     },
                     { $limit: 12 },
                     {
@@ -227,14 +210,6 @@ exports.autocomplete = async (req, res) => {
                     $search: {
                         index: "books_search",
                         compound: {
-                            filter: [
-                                {
-                                    equals: {
-                                        path: "status",
-                                        value: "published"
-                                    }
-                                }
-                            ],
                             should: [
                                 {
                                     autocomplete: {
@@ -256,6 +231,8 @@ exports.autocomplete = async (req, res) => {
                         },
                     },
                 },
+                // ✅ فلترة الحالة خارج السيرش
+                { $match: { status: "published" } },
                 { $limit: 6 },
                 {
                     $project: {
