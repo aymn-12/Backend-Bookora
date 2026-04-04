@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Book = require("../models/book.models");
 const { uploadToDrive, deleteFromDrive, drive } = require("../services/drive.service");
+const { uploadToSupabase, deleteFromSupabase } = require("../services/supabase.service");
 const Category = require("../models/category.models");
 const Section = require("../models/section.models");
 const ReadingProgress = require("../models/readingProgress.model");
@@ -70,23 +71,18 @@ exports.createBook = async (req, res, next) => {
             coverBuffer = coverFile.buffer;
         }
 
-        const [bookDrive, coverDrive] = await Promise.all([
+        const [bookDrive, supabaseCoverUrl] = await Promise.all([
             uploadToDrive({
                 buffer:       bookFile.buffer,
                 mimetype:     bookFile.mimetype,
                 originalname: cleanBookName,
                 folderId:     process.env.GOOGLE_BOOKS_FOLDER_ID,
             }),
-            uploadToDrive({
-                buffer:       coverBuffer,
-                mimetype:     "image/jpeg",
-                originalname: `${title}-cover.jpg`,
-                folderId:     process.env.GOOGLE_COVERS_FOLDER_ID,
-            }),
+            uploadToSupabase(coverBuffer, cleanCoverName, "image/jpeg")
         ]);
 
         uploadedBookId  = bookDrive.fileId;
-        uploadedCoverId = coverDrive.fileId;
+        const supabaseCoverPath = cleanCoverName; // The filename is our path in the bucket
 
         const newBook = await Book.create({
             title,
@@ -96,9 +92,9 @@ exports.createBook = async (req, res, next) => {
             sections:     sectionsArray,
             format:       format || "pdf",
             fileUrl:      bookDrive.fileUrl,
-            coverImage:   coverDrive.previewUrl,
+            coverImage:   supabaseCoverUrl,
             driveFileId:  bookDrive.fileId,
-            driveCoverId: coverDrive.fileId,
+            driveCoverId: "SUPABASE_" + supabaseCoverPath, // Mark it's on Supabase
             fileHash,
             normalizedTitle,
             series:       series || null,
@@ -110,10 +106,8 @@ exports.createBook = async (req, res, next) => {
         res.status(201).json({ success: true, data: newBook });
 
     } catch (error) {
-        await Promise.allSettled([
-            uploadedBookId  ? deleteFromDrive(uploadedBookId)  : Promise.resolve(),
-            uploadedCoverId ? deleteFromDrive(uploadedCoverId) : Promise.resolve(),
-        ]);
+        if (uploadedBookId) await deleteFromDrive(uploadedBookId);
+        // Supabase deletion can be handled if we have the filename
         console.error("[createBook] Error:", error.message);
         next(error);
     }
@@ -239,6 +233,9 @@ exports.getAllBook = async (req, res) => {
         const results = await Book.aggregate(pipeline);
         const books   = results[0]?.data || [];
         const total   = results[0]?.metadata[0]?.total || 0;
+
+        // Cache for 5 minutes for general listings
+        res.setHeader("Cache-Control", "public, max-age=300");
 
         res.status(200).json({
             success: true,
@@ -387,20 +384,18 @@ exports.updateBook = async (req, res, next) => {
                 coverBuffer = coverFile.buffer;
             }
 
-            const coverDrive = await uploadToDrive({
-                buffer: coverBuffer,
-                mimetype: "image/jpeg",
-                originalname: cleanCoverName,
-                folderId: process.env.GOOGLE_COVERS_FOLDER_ID,
-            });
+            const supabaseCoverUrl = await uploadToSupabase(coverBuffer, cleanCoverName, "image/jpeg");
 
-            // delete old cover file from drive silently
-            if (book.driveCoverId) {
-                await deleteFromDrive(book.driveCoverId).catch(err => console.error("Error deleting old cover max:", err));
+            // delete old cover file
+            if (book.driveCoverId && book.driveCoverId.startsWith("SUPABASE_")) {
+                const oldPath = book.driveCoverId.replace("SUPABASE_", "");
+                await deleteFromSupabase(oldPath).catch(err => console.error("Error deleting old cover from Supabase:", err));
+            } else if (book.driveCoverId) {
+                await deleteFromDrive(book.driveCoverId).catch(err => console.error("Error deleting old cover from Drive:", err));
             }
 
-            safeFields.coverImage = coverDrive.previewUrl;
-            safeFields.driveCoverId = coverDrive.fileId;
+            safeFields.coverImage = supabaseCoverUrl;
+            safeFields.driveCoverId = "SUPABASE_" + cleanCoverName;
         }
 
         const updatedBook = await Book.findByIdAndUpdate(req.params.id, safeFields, {
@@ -428,10 +423,15 @@ exports.deleteBook = async (req, res, next) => {
             return res.status(403).json({ message: "غير مصرح لك بحذف هذا الكتاب" });
         }
 
-        await Promise.allSettled([
-            deleteFromDrive(book.driveFileId),
-            deleteFromDrive(book.driveCoverId),
-        ]);
+        const tasks = [deleteFromDrive(book.driveFileId)];
+        
+        if (book.driveCoverId && book.driveCoverId.startsWith("SUPABASE_")) {
+            tasks.push(deleteFromSupabase(book.driveCoverId.replace("SUPABASE_", "")));
+        } else if (book.driveCoverId) {
+            tasks.push(deleteFromDrive(book.driveCoverId));
+        }
+
+        await Promise.allSettled(tasks);
 
         await book.deleteOne();
         res.status(200).json({ success: true, message: "تم حذف الكتاب بنجاح" });
@@ -484,6 +484,9 @@ exports.getBookById = async (req, res) => {
         if (book.status !== "published" && !isOwner && !isAdmin) {
             return res.status(404).json({ message: "يتم العمل حالياً على تجهيز هذا الكتاب." });
         }
+
+        // Cache details for 1 minute (private to user)
+        res.setHeader("Cache-Control", "private, max-age=60");
 
         res.status(200).json({ success: true, data: book });
     } catch (error) { res.status(500).json({ message: error.message }); }
@@ -636,7 +639,8 @@ exports.streamBook = async (req, res, next) => {
     }
     
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(book.title)}.pdf"`);
-    res.setHeader("Cache-Control", "private, max-age=3600");
+    // Cache PDF stream for 24 hours (CDN friendly)
+    res.setHeader("Cache-Control", "public, max-age=86400");
 
     // ─── Stream مباشرة من Drive للمتصفح
     driveResponse.data

@@ -68,11 +68,13 @@ const uploadToDrive = async ({ buffer, mimetype, originalname, folderId }) => {
         },
     });
 
+    const backendUrl = process.env.BACKEND_URL || 'https://backend-bookora.onrender.com';
+
     return {
         fileId,
         fileUrl:    `https://drive.google.com/uc?export=download&id=${fileId}`,
-        // استخدام الرابط المباشر للمصغر لو توفر، وإلا نستخدم الرابط المعدل
-        previewUrl: thumbnailLink ? thumbnailLink.replace(/=s220$/, "=s1000") : `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`,
+        // Use our own proxy instead of Google's thumbnail link
+        previewUrl: `${backendUrl}/api/images/cover/${fileId}`,
     };
 };
 
