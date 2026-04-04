@@ -58,7 +58,7 @@ exports.createBook = async (req, res, next) => {
 
         const bookExt        = bookFile.originalname.split('.').pop();
         const cleanBookName  = `${title}.${bookExt}`;
-        const cleanCoverName = `${slugify(title)}-${Date.now()}-cover.jpg`;
+        const cleanCoverName = `cover-${fileHash}-${Date.now()}.jpg`;
 
         let coverBuffer = coverFile.buffer;
         try {
@@ -371,7 +371,7 @@ exports.updateBook = async (req, res, next) => {
 
         if (req.files?.coverImage?.[0]) {
             const coverFile = req.files.coverImage[0];
-            const cleanCoverName = `${slugify(safeFields.title || book.title)}-${Date.now()}-cover.jpg`;
+            const cleanCoverName = `cover-${req.params.id}-${Date.now()}.jpg`;
 
             let coverBuffer = coverFile.buffer;
             try {
