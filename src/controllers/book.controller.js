@@ -5,7 +5,7 @@ const { uploadToSupabase, deleteFromSupabase } = require("../services/supabase.s
 const Category = require("../models/category.models");
 const Section = require("../models/section.models");
 const ReadingProgress = require("../models/readingProgress.model");
-const { normalizeArabic, generateFileHash } = require("../utils/string.utils");
+const { normalizeArabic, generateFileHash, slugify } = require("../utils/string.utils");
 const { suggestSection } = require("../utils/smartMapper.utils");
 const sharp = require("sharp");
 
@@ -58,7 +58,7 @@ exports.createBook = async (req, res, next) => {
 
         const bookExt        = bookFile.originalname.split('.').pop();
         const cleanBookName  = `${title}.${bookExt}`;
-        const cleanCoverName = `${title}-cover.jpg`;
+        const cleanCoverName = `${slugify(title)}-${Date.now()}-cover.jpg`;
 
         let coverBuffer = coverFile.buffer;
         try {
@@ -371,7 +371,7 @@ exports.updateBook = async (req, res, next) => {
 
         if (req.files?.coverImage?.[0]) {
             const coverFile = req.files.coverImage[0];
-            const cleanCoverName = `${safeFields.title || book.title}-cover.jpg`;
+            const cleanCoverName = `${slugify(safeFields.title || book.title)}-${Date.now()}-cover.jpg`;
 
             let coverBuffer = coverFile.buffer;
             try {
