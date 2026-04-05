@@ -617,19 +617,44 @@ exports.getRelatedBooks = async (req, res) => {
         const book = await Book.findById(id);
         if (!book) return res.status(404).json({ success: false, message: "Book not found" });
 
-        // نجد الكتب التي تشترك في تصنيف واحد على الأقل أو نفس المؤلف (المنشورة فقط)
-        const related = await Book.find({
-            _id: { $ne: id },
-            status: "published",
-            $or: [
-                { categories: { $in: book.categories || [] } },
-                { author: book.author }
-            ]
-        })
-        .limit(6)
-        .select("title author coverImage format")
-        .sort({ downloadCount: -1 })
-        .lean();
+        // استخدام Aggregation Pipeline لحساب درجة التقارب بدقة (Relevance Score)
+        const related = await Book.aggregate([
+            {
+                $match: {
+                    _id: { $ne: book._id },
+                    status: "published",
+                    $or: [
+                        { categories: { $in: book.categories || [] } },
+                        { author: book.author }
+                    ]
+                }
+            },
+            {
+                $addFields: {
+                    // زيادة كبيرة لو كان نفس المؤلف (أجزاء السلسلة أو نفس النمط)
+                    authorMatchBoost: { $cond: [{ $eq: ["$author", book.author] }, 4, 0] },
+                    // عدد التصنيفات المشتركة بين الكتابين
+                    categoryMatchCount: {
+                        $size: { $setIntersection: [{ $ifNull: ["$categories", []] }, book.categories || []] }
+                    }
+                }
+            },
+            {
+                $addFields: {
+                    // المجموع الكلي للتقارب
+                    totalRelevance: { $add: ["$authorMatchBoost", "$categoryMatchCount"] }
+                }
+            },
+            {
+                $sort: { totalRelevance: -1, downloadCount: -1 } // الترتيب بالتقارب أولاً ثم بالتحميلات
+            },
+            { $limit: 10 },
+            {
+                $project: {
+                    title: 1, author: 1, coverImage: 1, format: 1, totalRelevance: 1
+                }
+            }
+        ]);
 
         res.json({ success: true, data: related });
     } catch (error) {
