@@ -262,8 +262,14 @@ exports.getAllBook = async (req, res) => {
         const books   = results[0]?.data || [];
         const total   = results[0]?.metadata[0]?.total || 0;
 
-        // Cache for 5 minutes for general listings
-        res.setHeader("Cache-Control", "public, max-age=300");
+        // Cache Management:
+        // إذا كان هناك مستخدم مسجل (بيانات مخصصة)، نمنع أو نحجم الكاش العام حتى لا تظهر بياناته لشخص آخر.
+        if (req.user) {
+            res.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        } else {
+            // للزوار غير المسجلين، يمكن حفظ الكاش بسلام
+            res.setHeader("Cache-Control", "public, max-age=300");
+        }
 
         res.status(200).json({
             success: true,
