@@ -215,7 +215,7 @@ exports.getAllBook = async (req, res) => {
             newest:    { createdAt: -1, _id: -1 },
             oldest:    { createdAt: 1, _id: 1 },
             downloads: { downloadCount: -1, _id: -1 },
-            rating:    { averageRating: -1, reviewCount: -1, _id: -1 },
+            rating:    { bayesianRating: -1, reviewCount: -1, _id: -1 }, // Updated to use Bayesian Average
             title:     { title: 1, _id: -1 },
         };
 
@@ -235,6 +235,22 @@ exports.getAllBook = async (req, res) => {
                     $addFields: {
                         personalizedBoost: {
                             $size: { $setIntersection: [ { $ifNull: ["$categories", []] }, personalizedCats ] }
+                        }
+                    }
+                }
+            ] : []),
+            // حساب المتوسط البايزي (Bayesian Average) لترتيب التقييم لتفادي تفوق الكتب ذات تقييم واحد على الكتب المشهورة
+            ...(sort === "rating" ? [
+                {
+                    $addFields: {
+                        bayesianRating: {
+                            $divide: [
+                                { $add: [
+                                    { $multiply: [{ $ifNull: ["$averageRating", 0] }, { $ifNull: ["$reviewCount", 0] }] },
+                                    10.5 // (C * m) => (3.5 mean rating * 3 min reviews)
+                                ]},
+                                { $add: [{ $ifNull: ["$reviewCount", 0] }, 3] } // (v + m) => (reviews + 3)
+                            ]
                         }
                     }
                 }
