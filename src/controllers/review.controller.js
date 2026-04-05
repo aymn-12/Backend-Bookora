@@ -1,10 +1,12 @@
 const Review = require("../models/review.models");
 const Book = require("../models/book.models");
 
+const mongoose = require("mongoose");
+
 // دالة مساعدة لتحديث تقييم الكتاب
 const updateBookRating = async (bookId) => {
     const stats = await Review.aggregate([
-        { $match: { book: new require("mongoose").Types.ObjectId(bookId) } },
+        { $match: { book: new mongoose.Types.ObjectId(bookId) } },
         {
             $group: {
                 _id: "$book",
