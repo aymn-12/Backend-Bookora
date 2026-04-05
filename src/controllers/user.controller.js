@@ -1,5 +1,6 @@
 const User = require("../models/user.models");
 const Book = require("../models/book.models");
+const { updateUserInterests } = require("../utils/recommendation.utils");
 
 // ─── Get Saved Books (المحفوظات)
 exports.getLibrary = async (req, res, next) => {
@@ -29,6 +30,9 @@ exports.addToLibrary = async (req, res, next) => {
 
         user.savedBooks.push(req.params.bookId);
         await user.save();
+
+        // ─── Update Interest Scores ─── //
+        updateUserInterests(user._id, book.categories, 3);
 
         res.status(200).json({ success: true, message: "Book added to saved books" });
     } catch (error) { next(error); }

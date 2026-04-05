@@ -8,6 +8,7 @@ const ReadingProgress = require("../models/readingProgress.model");
 const { normalizeArabic, generateFileHash, slugify } = require("../utils/string.utils");
 const { suggestSection } = require("../utils/smartMapper.utils");
 const sharp = require("sharp");
+const { updateUserInterests } = require("../utils/recommendation.utils");
 
 // ─── إنشاء كتاب جديد
 exports.createBook = async (req, res, next) => {
@@ -194,6 +195,22 @@ exports.getAllBook = async (req, res) => {
             }
         }
 
+        // ─── Seamless Personalization (مختارات لك مخفية ضمنياً) ─── //
+        let personalizedCats = [];
+        // Apply personalization only when browsing generic lists (no filters, or default/newest sorting)
+        if ((!sort || sort === "newest") && req.user && !searchUsed && !category && !section && !ids && !author) {
+            const UserParams = require("../models/user.models");
+            const dbUser = await UserParams.findById(req.user._id).select("interestScores").lean();
+            if (dbUser && dbUser.interestScores && Object.keys(dbUser.interestScores).length > 0) {
+                 personalizedCats = Object.entries(dbUser.interestScores)
+                     .sort((a,b) => b[1] - a[1])
+                     .slice(0, 5) // Top 5 interested categories
+                     .map(e => {
+                         try { return new mongoose.Types.ObjectId(e[0]); } catch(err) { return null; }
+                     }).filter(id => id);
+            }
+        }
+
         const sortOptions = {
             newest:    { createdAt: -1, _id: -1 },
             oldest:    { createdAt: 1, _id: 1 },
@@ -201,16 +218,27 @@ exports.getAllBook = async (req, res) => {
             rating:    { averageRating: -1, reviewCount: -1, _id: -1 },
             title:     { title: 1, _id: -1 },
         };
-        
-        // الترتيب حسب صلة البحث (score) إذا تم استخدام البحث النصي
+
         let sortBy = sortOptions[sort] || sortOptions.newest;
         if (searchUsed) {
             sortBy = { score: { $meta: "textScore" }, ...sortBy };
+        } else if (personalizedCats.length > 0) {
+            // Sort by matched interests first, then newest
+            sortBy = { personalizedBoost: -1, ...sortBy };
         }
 
         const pipeline = [
             { $match: matchStage },
             ...(searchUsed ? [{ $addFields: { score: { $meta: "textScore" } } }] : []),
+            ...(personalizedCats.length > 0 ? [
+                {
+                    $addFields: {
+                        personalizedBoost: {
+                            $size: { $setIntersection: [ { $ifNull: ["$categories", []] }, personalizedCats ] }
+                        }
+                    }
+                }
+            ] : []),
             { $sort: sortBy },
             {
                 $facet: {
@@ -461,6 +489,8 @@ exports.confirmDownload = async (req, res, next) => {
             await User.findByIdAndUpdate(req.user._id, {
                 $addToSet: { downloadedBooks: book._id },
             });
+            // ─── Update Interest Scores ─── //
+            updateUserInterests(req.user._id, book.categories, 5);
         }
 
         res.json({ success: true });
@@ -483,6 +513,11 @@ exports.getBookById = async (req, res) => {
 
         if (book.status !== "published" && !isOwner && !isAdmin) {
             return res.status(404).json({ message: "يتم العمل حالياً على تجهيز هذا الكتاب." });
+        }
+
+        // ─── Update Interest Scores (View) ─── //
+        if (req.user) {
+            updateUserInterests(req.user._id, book.categories, 1);
         }
 
         // Cache details for 1 minute (private to user)

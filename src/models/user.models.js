@@ -40,6 +40,11 @@ const UserSchema = new mongoose.Schema({
     resetOtp: String,
     resetOtpExpires: Date,
     refreshToken: String,
+    interestScores: {
+        type: Map,
+        of: Number,
+        default: {}
+    },
 }, { 
     timestamps: true,
     toJSON: {
