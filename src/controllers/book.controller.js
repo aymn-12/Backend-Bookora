@@ -197,8 +197,9 @@ exports.getAllBook = async (req, res) => {
 
         // ─── Seamless Personalization (مختارات لك مخفية ضمنياً) ─── //
         let personalizedCats = [];
+        const isGenericFeed = !searchUsed && !category && !section && !ids && !author && !mine && !status && !createdBy && !series;
         // Apply personalization only when browsing generic lists (no filters, or default/newest sorting)
-        if ((!sort || sort === "newest") && req.user && !searchUsed && !category && !section && !ids && !author) {
+        if ((!sort || sort === "newest") && req.user && isGenericFeed) {
             const UserParams = require("../models/user.models");
             const dbUser = await UserParams.findById(req.user._id).select("interestScores").lean();
             if (dbUser && dbUser.interestScores && Object.keys(dbUser.interestScores).length > 0) {
