@@ -6,9 +6,11 @@ exports.connectDB = async () => {
     mongoose.set('strictQuery', true);
     console.log('⏳ Connecting to MongoDB Atlas...');
     await mongoose.connect(process.env.DATABASE_URL, {
-      maxPoolSize: 200,
-      serverSelectionTimeoutMS: 30000, 
+      maxPoolSize: 10,          // Safe for 512MB RAM — each connection ~2-5MB
+      minPoolSize: 2,           // Keep 2 connections warm
+      serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
+      heartbeatFrequencyMS: 10000,
     });
     console.log('✅ Connected to Database');
   } catch (error) {

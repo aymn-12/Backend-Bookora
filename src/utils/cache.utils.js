@@ -1,5 +1,8 @@
 const cache = new Map();
 
+// Limit cache entries to avoid memory bloat on low-RAM servers (512MB)
+const MAX_CACHE_SIZE = 200;
+
 /**
  * Get item from cache
  * @param {string} key 
@@ -23,6 +26,11 @@ exports.getCache = (key) => {
  * @param {number} ttlSeconds 
  */
 exports.setCache = (key, value, ttlSeconds = 60) => {
+    // Evict oldest entry if cache is full (LRU-lite)
+    if (cache.size >= MAX_CACHE_SIZE) {
+        const firstKey = cache.keys().next().value;
+        cache.delete(firstKey);
+    }
     cache.set(key, { 
         value, 
         expiry: Date.now() + (ttlSeconds * 1000) 
