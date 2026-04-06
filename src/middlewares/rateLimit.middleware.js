@@ -1,5 +1,4 @@
 const rateLimit = require("express-rate-limit");
-const { skipLoadTest } = require("../utils/rateLimitBypass.utils");
 
 // Limiter for failed login attempts
 exports.authLimiter = rateLimit({
@@ -12,7 +11,6 @@ exports.authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: true, // Only count failed attempts towards the limit
-    skip: skipLoadTest, // Bypass for load testing
 });
 
 // Limiter for new account registrations to prevent spam
@@ -25,5 +23,5 @@ exports.registerLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: skipLoadTest, // Bypass for load testing
 });
+

@@ -8,14 +8,11 @@ const validateMiddleware = require("../middlewares/validate.middlewares");
 const rateLimit = require("express-rate-limit");
 const { updateBookSchema } = require("../validations/book.validation");
 const { streamBook, getReadingProgress, updateReadingProgress } = require("../controllers/book.controller");
-const { skipLoadTest } = require("../utils/rateLimitBypass.utils");
-const cacheMiddleware = require("../middlewares/cache.middleware");
 
 const bookLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100, // 100 requests per 15 minutes per IP for book operations
-    message: { success: false, message: "Too many requests, please try again later" },
-    skip: skipLoadTest, // Bypass for load testing
+    message: { success: false, message: "Too many requests, please try again later" }
 });
 
 // ─── إعداد رفع الملفين معاً
@@ -25,7 +22,7 @@ const bookUpload = upload.fields([
 ]);
 
 // ─── Public Routes
-router.get("/",    bookLimiter, optionalAuth, cacheMiddleware(60), bookCtrl.getAllBook);
+router.get("/",    bookLimiter, optionalAuth, bookCtrl.getAllBook);
 router.get("/check-title", bookLimiter, bookCtrl.checkTitleStatus); 
 router.get("/:id", bookLimiter, bookCtrl.getBookById);
 router.get("/:id/related", bookLimiter, bookCtrl.getRelatedBooks);
