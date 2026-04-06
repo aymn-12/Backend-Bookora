@@ -61,6 +61,8 @@ app.use(helmet({
     }
 }));
 
+const { skipLoadTest } = require("./utils/rateLimitBypass.utils");
+
 // Global Rate Limiter
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -68,6 +70,7 @@ const globalLimiter = rateLimit({
     message: { success: false, message: "Too many requests from this IP, please try again later" },
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    skip: skipLoadTest, // Bypass for load testing
 });
 app.use("/api", globalLimiter);
 
