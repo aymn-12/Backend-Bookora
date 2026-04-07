@@ -12,6 +12,16 @@ const generateToken = (id, role) => {
 };
 
 
+const attachAccessToken = (res, token) => {
+    res.cookie("accessToken", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: 15 * 60 * 1000
+    });
+};
+
 const attachTokens = async (user, res) => {
     const accessToken = generateToken(user._id, user.role);
     const refreshToken = generateRefreshToken();
@@ -22,16 +32,15 @@ const attachTokens = async (user, res) => {
 
     res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: true, // Required for sameSite: "none"
-        sameSite: "none", // Allows cookies between Vercel and Render
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        secure: true,
+        sameSite: "none",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    // ─── CSRF: set readable token alongside the httpOnly refreshToken
     const csrfToken = generateCsrfToken();
     setCsrfCookie(res, csrfToken);
 
-    return accessToken;
+    attachAccessToken(res, accessToken);
 };
 
 
@@ -106,7 +115,7 @@ exports.verifyEmail = async (req, res, next) => {
         logger.info("Email verified", { email: pending.email });
         await PendingUser.deleteOne({ email });
 
-        const accessToken = await attachTokens(user, res);
+        await attachTokens(user, res);
 
         res.status(201).json({
             success: true,
@@ -118,7 +127,6 @@ exports.verifyEmail = async (req, res, next) => {
                 role:        user.role,
                 savedBooks:  user.savedBooks || [],
                 downloadedBooks: user.downloadedBooks || [],
-                accessToken,
             },
         });
 
@@ -175,7 +183,7 @@ exports.login = async (req, res, next) => {
         }
 
 
-        const accessToken = await attachTokens(user, res);
+        await attachTokens(user, res);
         logger.info("User logged in", { email, userId: user._id });
 
         res.status(200).json({
@@ -187,7 +195,6 @@ exports.login = async (req, res, next) => {
                 role:        user.role,
                 savedBooks:  user.savedBooks || [],
                 downloadedBooks: user.downloadedBooks || [],
-                accessToken,
             },
         });
     } catch (error) { next(error); }
@@ -297,8 +304,9 @@ exports.refreshToken = async (req, res, next) => {
         setCsrfCookie(res, newCsrfToken);
 
         const accessToken = generateToken(user._id, user.role);
+        attachAccessToken(res, accessToken);
 
-        res.json({ success: true, accessToken, csrfToken: newCsrfToken });
+        res.json({ success: true, csrfToken: newCsrfToken });
     } catch (error) { next(error); }
 };
 
@@ -396,6 +404,7 @@ exports.logout = async (req, res, next) => {
         logger.info("User logged out", { userId: req.user._id });
 
         res.clearCookie("refreshToken", { secure: true, sameSite: "none" });
+        res.clearCookie("accessToken", { path: "/" });
         // ─── CSRF: clear the CSRF cookie on logout
         clearCsrfCookie(res);
         res.json({ success: true, message: "تم تسجيل الخروج بنجاح" });

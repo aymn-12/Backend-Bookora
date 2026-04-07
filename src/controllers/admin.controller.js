@@ -81,7 +81,7 @@ exports.getAllUsers = async (req, res, next) => {
         const limit = parseInt(req.query.limit) || 10;
         const skip  = (page - 1) * limit;
 
-        const { search, role } = req.query; // إضافة role للفلترة
+        const { search, role, hasAuthorSub } = req.query;
         const query = {};
 
         if (search) {
@@ -91,9 +91,13 @@ exports.getAllUsers = async (req, res, next) => {
             ];
         }
 
-        // تفعيل فلترة الأدوار
         if (role && role !== "all") {
             query.role = role;
+        }
+
+        // Filter users who have activated author subscription
+        if (hasAuthorSub === "true") {
+            query["authorSubscription.status"] = { $in: ["trial", "active", "expired"] };
         }
 
         const [users, total] = await Promise.all([
@@ -116,6 +120,48 @@ exports.getAllUsers = async (req, res, next) => {
                 hasNext:    page < Math.ceil(total / limit),
                 hasPrev:    page > 1,
             },
+        });
+    } catch (error) { next(error); }
+};
+
+// ─── إدارة اشتراك المؤلف (Superadmin Only)
+exports.manageAuthorSubscription = async (req, res, next) => {
+    try {
+        const { action } = req.body; // "revoke" | "reset_trial"
+
+        if (!["revoke", "reset_trial"].includes(action)) {
+            return res.status(400).json({ message: "الإجراء غير صالح. يجب أن يكون revoke أو reset_trial" });
+        }
+
+        const target = await User.findById(req.params.id);
+        if (!target) return res.status(404).json({ message: "المستخدم غير موجود" });
+
+        if (action === "revoke") {
+            // Remove author access completely
+            target.authorSubscription = {
+                status: "none",
+                trialEndsAt: null,
+                trialBooksUsed: 0,
+                monthlyUploadCount: 0,
+            };
+        } else if (action === "reset_trial") {
+            // Give a fresh 15-day trial
+            const trialEndsAt = new Date();
+            trialEndsAt.setDate(trialEndsAt.getDate() + 15);
+            target.authorSubscription = {
+                status: "trial",
+                trialEndsAt,
+                trialBooksUsed: 0,
+                monthlyUploadCount: 0,
+            };
+        }
+
+        await target.save();
+
+        res.json({
+            success: true,
+            message: action === "revoke" ? "تم إلغاء صلاحيات المؤلف" : "تم تجديد التجربة المجانية",
+            data: target.authorSubscription,
         });
     } catch (error) { next(error); }
 };
@@ -197,6 +243,75 @@ exports.createUser = async (req, res, next) => {
                 email: user.email,
                 role: user.role,
             },
+        });
+    } catch (error) { next(error); }
+};
+
+// ─── مراجعة كتاب مؤلف (قبول / رفض)
+exports.reviewBook = async (req, res, next) => {
+    try {
+        const { action, notes } = req.body;
+
+        if (!["approve", "reject"].includes(action)) {
+            return res.status(400).json({ message: "الإجراء غير صالح. يجب أن يكون approve أو reject" });
+        }
+
+        const book = await Book.findById(req.params.id);
+        if (!book) return res.status(404).json({ message: "الكتاب غير موجود" });
+
+        if (book.publishStatus !== "pending_review") {
+            return res.status(400).json({ message: "هذا الكتاب ليس قيد المراجعة" });
+        }
+
+        // Files are already on Google Drive (PDF) + Supabase (cover) — just update status
+        const updateData = {
+            publishStatus: action === "approve" ? "approved" : "rejected",
+            reviewedBy:    req.user._id,
+            reviewedAt:    new Date(),
+            ...(action === "reject" && notes ? { reviewNotes: notes } : {}),
+        };
+
+        const updatedBook = await Book.findByIdAndUpdate(req.params.id, updateData, { new: true });
+
+        res.json({ success: true, data: updatedBook });
+    } catch (error) { next(error); }
+};
+
+// ─── تحديث حالة المؤلف (إلغاء / إعادة تعيين تجربة)
+exports.updateAuthorStatus = async (req, res, next) => {
+    try {
+        const { action } = req.body; // "revoke" | "reset_trial"
+
+        if (!["revoke", "reset_trial"].includes(action)) {
+            return res.status(400).json({ message: "الإجراء غير صالح" });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: "المستخدم غير موجود" });
+
+        if (action === "revoke") {
+            user.authorSubscription = {
+                status: "none",
+                trialEndsAt: null,
+                trialBooksUsed: 0,
+                monthlyUploadCount: 0,
+                subscriptionStartsAt: null,
+                subscriptionEndsAt: null,
+            };
+        } else if (action === "reset_trial") {
+            const trialEndsAt = new Date();
+            trialEndsAt.setDate(trialEndsAt.getDate() + 15);
+            user.authorSubscription.status = "trial";
+            user.authorSubscription.trialEndsAt = trialEndsAt;
+            user.authorSubscription.trialBooksUsed = 0;
+        }
+
+        await user.save();
+
+        res.json({
+            success: true,
+            message: action === "revoke" ? "تم إلغاء صلاحية المؤلف" : "تم إعادة تعيين فترة التجربة",
+            data: { authorSubscription: user.authorSubscription },
         });
     } catch (error) { next(error); }
 };

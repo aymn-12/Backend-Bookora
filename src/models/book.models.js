@@ -111,8 +111,40 @@ const BookSchema = new mongoose.Schema({
     reviewCount: {
         type: Number,
         default: 0
+    },
+    authorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+        index: true
+    },
+    publishStatus: {
+        type: String,
+        enum: ["pending_review", "approved", "rejected"],
+        default: "approved"
+    },
+    supabaseFileKey: {
+        type: String,
+        default: null
+    },
+    supabaseCoverKey: {
+        type: String,
+        default: null
+    },
+    reviewNotes: {
+        type: String,
+        default: null
+    },
+    reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null
+    },
+    reviewedAt: {
+        type: Date,
+        default: null
     }
-}, { timestamps: true }); 
+}, { timestamps: true });
 
 BookSchema.index({ title: "text", author: "text" });
 BookSchema.index({ createdBy: 1 });
@@ -121,5 +153,7 @@ BookSchema.index({ sections: 1 });
 BookSchema.index({ series: 1 });
 BookSchema.index({ status: 1, createdAt: -1 });
 BookSchema.index({ status: 1, downloadCount: -1 });
+BookSchema.index({ authorId: 1, publishStatus: 1 });
+BookSchema.index({ publishStatus: 1, status: 1 });
 
 module.exports = mongoose.model("Book", BookSchema);

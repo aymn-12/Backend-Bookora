@@ -151,6 +151,13 @@ exports.getAllBook = async (req, res) => {
             delete matchStage.status; // السماح للمالك برؤية مسوداته
         }
 
+        // Filter out pending/rejected author books for public queries
+        // Admins, and users viewing their own books bypass this filter
+        const isAdmin = req.user && ["admin", "superadmin"].includes(req.user.role);
+        if (!isAdmin && mine !== "true" && !createdBy) {
+            matchStage.publishStatus = { $in: ["approved", null] };
+        }
+
         // فلاتر المدى (Range Filters)
         if (minDownloads || maxDownloads) {
             matchStage.downloadCount = {};

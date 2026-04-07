@@ -20,6 +20,7 @@ const searchRoutes = require("./routes/search.routes");
 const statsRoutes = require("./routes/stats.routes");
 const downloadRoutes = require("./routes/download.routes");
 const imageRoutes = require("./routes/image.routes"); // Add this
+const authorRoutes = require("./routes/author.routes");
 const xss = require("xss");
 
 
@@ -138,6 +139,7 @@ app.use("/api/requests", bookRequestRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/images",     imageRoutes); // Add this mount point
+app.use("/api/author",     authorRoutes);
 
 // ─── Static Files
 app.use("/uploads", express.static("uploads"));

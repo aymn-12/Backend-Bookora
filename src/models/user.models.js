@@ -45,6 +45,33 @@ const UserSchema = new mongoose.Schema({
         of: Number,
         default: {}
     },
+    authorSubscription: {
+        status: {
+            type: String,
+            enum: ["none", "trial", "active", "expired"],
+            default: "none"
+        },
+        trialEndsAt: {
+            type: Date,
+            default: null
+        },
+        trialBooksUsed: {
+            type: Number,
+            default: 0
+        },
+        monthlyUploadCount: {
+            type: Number,
+            default: 0
+        },
+        subscriptionStartsAt: {
+            type: Date,
+            default: null
+        },
+        subscriptionEndsAt: {
+            type: Date,
+            default: null
+        }
+    },
 }, { 
     timestamps: true,
     toJSON: {
