@@ -33,8 +33,16 @@ router.post("/:id/confirm-download",     bookLimiter, optionalAuth, bookCtrl.con
 router.post("/",
     authMiddleware,
     roleMiddleware(["admin", "superadmin"]),
-    bookUpload,
-    validateFileSizes,   // ← أضف هذا
+    (req, res, next) => {
+        bookUpload(req, res, (err) => {
+            if (err) {
+                console.error('[Multer Error]', err.message);
+                return res.status(400).json({ success: false, message: err.message });
+            }
+            next();
+        });
+    },
+    validateFileSizes,
     bookCtrl.createBook
 );
 
@@ -46,7 +54,15 @@ router.put(
     "/:id",
     authMiddleware,
     roleMiddleware(["admin", "superadmin"]),
-    bookUpload,
+    (req, res, next) => {
+        bookUpload(req, res, (err) => {
+            if (err) {
+                console.error('[Multer Error]', err.message);
+                return res.status(400).json({ success: false, message: err.message });
+            }
+            next();
+        });
+    },
     validateFileSizes,
     validateMiddleware(updateBookSchema),
     bookCtrl.updateBook

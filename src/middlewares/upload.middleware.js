@@ -1,7 +1,24 @@
 const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
 
-// ─── Memory Storage
-const storage = multer.memoryStorage();
+// ─── Ensure temp directory exists
+const tempDir = path.join(process.cwd(), "uploads", "tmp");
+if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+}
+
+// ─── Disk Storage Configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, tempDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        const ext = path.extname(file.originalname);
+        cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+    }
+});
 
 const fileFilter = (req, file, cb) => {
     if (file.fieldname === "bookFile") {
@@ -17,7 +34,7 @@ const fileFilter = (req, file, cb) => {
     cb(new Error("حقل غير معروف: " + file.fieldname));
 };
 
-// ─── تحسين 3: حدود مختلفة لكل نوع ملف
+// ─── Multer Instance with Disk Storage
 const upload = multer({
     storage,
     fileFilter,

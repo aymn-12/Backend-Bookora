@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const fs = require("fs");
 const Book = require("../models/book.models");
 const { uploadToDrive, deleteFromDrive, drive } = require("../services/drive.service");
 const { uploadToSupabase, deleteFromSupabase } = require("../services/supabase.service");
@@ -28,8 +29,12 @@ exports.createBook = async (req, res, next) => {
         const bookFile  = req.files.bookFile[0];
         const coverFile = req.files.coverImage[0];
 
+        // ─── Read files from disk ──────────────────────────────────────────
+        const bookBuffer      = fs.readFileSync(bookFile.path);
+        const coverBufferRaw  = fs.readFileSync(coverFile.path);
+
         // ─── التحقق الذكي من التكرار (Smarter Duplication Check)
-        const fileHash = generateFileHash(bookFile.buffer);
+        const fileHash = generateFileHash(bookBuffer);
         const normalizedTitle = normalizeArabic(title);
 
         const existingBook = await Book.findOne({
@@ -51,7 +56,6 @@ exports.createBook = async (req, res, next) => {
         const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories] : [];
         let   sectionsArray   = Array.isArray(sections) ? sections : sections ? [sections] : [];
 
-        // ─── التوزيع الذكي إذا لم يتم اختيار قسم
         if (sectionsArray.length === 0) {
             const suggestedId = suggestSection(title);
             sectionsArray = [suggestedId];
@@ -61,20 +65,20 @@ exports.createBook = async (req, res, next) => {
         const cleanBookName  = `${title}.${bookExt}`;
         const cleanCoverName = `cover-${fileHash}-${Date.now()}.jpg`;
 
-        let coverBuffer = coverFile.buffer;
+        let coverBuffer = coverBufferRaw;
         try {
-            coverBuffer = await sharp(coverFile.buffer)
+            coverBuffer = await sharp(coverBufferRaw)
                 .resize(600, 900, { fit: "cover" })
                 .jpeg({ quality: 90 })
                 .toBuffer();
         } catch (error) {
             console.error("❌ Sharp optimization failed:", error);
-            coverBuffer = coverFile.buffer;
+            coverBuffer = coverBufferRaw;
         }
 
         const [bookDrive, supabaseCoverUrl] = await Promise.all([
             uploadToDrive({
-                buffer:       bookFile.buffer,
+                filePath:     bookFile.path,
                 mimetype:     bookFile.mimetype,
                 originalname: cleanBookName,
                 folderId:     process.env.GOOGLE_BOOKS_FOLDER_ID,
@@ -83,7 +87,7 @@ exports.createBook = async (req, res, next) => {
         ]);
 
         uploadedBookId  = bookDrive.fileId;
-        const supabaseCoverPath = cleanCoverName; // The filename is our path in the bucket
+        const supabaseCoverPath = cleanCoverName;
 
         const newBook = await Book.create({
             title,
@@ -95,7 +99,7 @@ exports.createBook = async (req, res, next) => {
             fileUrl:      bookDrive.fileUrl,
             coverImage:   supabaseCoverUrl,
             driveFileId:  bookDrive.fileId,
-            driveCoverId: "SUPABASE_" + supabaseCoverPath, // Mark it's on Supabase
+            driveCoverId: "SUPABASE_" + supabaseCoverPath,
             fileHash,
             normalizedTitle,
             series:       series || null,
@@ -108,9 +112,11 @@ exports.createBook = async (req, res, next) => {
 
     } catch (error) {
         if (uploadedBookId) await deleteFromDrive(uploadedBookId);
-        // Supabase deletion can be handled if we have the filename
         console.error("[createBook] Error:", error.message);
         next(error);
+    } finally {
+        if (req.files?.bookFile?.[0]?.path) fs.unlink(req.files.bookFile[0].path, () => {});
+        if (req.files?.coverImage?.[0]?.path) fs.unlink(req.files.coverImage[0].path, () => {});
     }
 };
 
@@ -123,7 +129,7 @@ exports.getAllBook = async (req, res) => {
 
         const { 
             category, section, format, sort, mine, createdBy, 
-            series, ids, status, 
+            series, ids, status, publishStatus,
             q, author, minDownloads, maxDownloads,
             dateFrom, dateTo, searchIn
         } = req.query;
@@ -133,9 +139,12 @@ exports.getAllBook = async (req, res) => {
         // التحقق من صحة الـ IDs لتجنب توقف السيرفر
         const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+        const isAdmin = req.user && ["admin", "superadmin"].includes(req.user.role);
+
         if (status) {
             matchStage.status = status;
-        } else {
+        } else if (!isAdmin && mine !== "true" && !createdBy) {
+            // Visitors see only published books by default
             matchStage.status = "published";
         }
 
@@ -153,9 +162,10 @@ exports.getAllBook = async (req, res) => {
 
         // Filter out pending/rejected author books for public queries
         // Admins, and users viewing their own books bypass this filter
-        const isAdmin = req.user && ["admin", "superadmin"].includes(req.user.role);
-        if (!isAdmin && mine !== "true" && !createdBy) {
-            matchStage.publishStatus = { $in: ["approved", null] };
+        if (publishStatus && (isAdmin || mine === "true")) {
+            matchStage.publishStatus = publishStatus;
+        } else if (!isAdmin && mine !== "true" && !createdBy) {
+            matchStage.publishStatus = { $nin: ["pending_review", "rejected"] };
         }
 
         // فلاتر المدى (Range Filters)
@@ -383,7 +393,6 @@ exports.updateBook = async (req, res, next) => {
         if (safeFields.title) {
             safeFields.normalizedTitle = normalizeArabic(safeFields.title);
 
-            // Check if normalized title already exists elsewhere
             const duplicate = await Book.findOne({
                 normalizedTitle: safeFields.normalizedTitle,
                 _id: { $ne: req.params.id }
@@ -399,9 +408,9 @@ exports.updateBook = async (req, res, next) => {
         // --- Handle File Uploads for Edit ---
         if (req.files?.bookFile?.[0]) {
             const bookFile = req.files.bookFile[0];
-            const fileHash = generateFileHash(bookFile.buffer);
+            const bookBuffer = fs.readFileSync(bookFile.path);
+            const fileHash = generateFileHash(bookBuffer);
 
-            // check duplicate file
             const existingBookFile = await Book.findOne({ fileHash, _id: { $ne: req.params.id } });
             if (existingBookFile) {
                 return res.status(400).json({ success: false, message: "هذا الملف (PDF/EPUB) موجود بالفعل لكتاب آخر" });
@@ -411,13 +420,12 @@ exports.updateBook = async (req, res, next) => {
             const cleanBookName = `${safeFields.title || book.title}.${bookExt}`;
             
             const bookDrive = await uploadToDrive({
-                buffer: bookFile.buffer,
+                filePath: bookFile.path,
                 mimetype: bookFile.mimetype,
                 originalname: cleanBookName,
                 folderId: process.env.GOOGLE_BOOKS_FOLDER_ID,
             });
 
-            // delete old book file from drive silently
             if (book.driveFileId) {
                 await deleteFromDrive(book.driveFileId).catch(err => console.error("Error deleting old book file:", err));
             }
@@ -429,22 +437,21 @@ exports.updateBook = async (req, res, next) => {
 
         if (req.files?.coverImage?.[0]) {
             const coverFile = req.files.coverImage[0];
+            const coverBufferRaw = fs.readFileSync(coverFile.path);
             const cleanCoverName = `cover-${req.params.id}-${Date.now()}.jpg`;
 
-            let coverBuffer = coverFile.buffer;
+            let coverBuffer = coverBufferRaw;
             try {
-                const sharp = require("sharp");
-                coverBuffer = await sharp(coverFile.buffer)
+                coverBuffer = await sharp(coverBufferRaw)
                     .resize(600, 900, { fit: "cover" })
                     .jpeg({ quality: 90 })
                     .toBuffer();
             } catch {
-                coverBuffer = coverFile.buffer;
+                coverBuffer = coverBufferRaw;
             }
 
             const supabaseCoverUrl = await uploadToSupabase(coverBuffer, cleanCoverName, "image/jpeg");
 
-            // delete old cover file
             if (book.driveCoverId && book.driveCoverId.startsWith("SUPABASE_")) {
                 const oldPath = book.driveCoverId.replace("SUPABASE_", "");
                 await deleteFromSupabase(oldPath).catch(err => console.error("Error deleting old cover from Supabase:", err));
@@ -465,6 +472,9 @@ exports.updateBook = async (req, res, next) => {
     } catch (error) {
         console.error("[updateBook] Error:", error);
         next(error);
+    } finally {
+        if (req.files?.bookFile?.[0]?.path) fs.unlink(req.files.bookFile[0].path, () => {});
+        if (req.files?.coverImage?.[0]?.path) fs.unlink(req.files.coverImage[0].path, () => {});
     }
 };
 
@@ -530,18 +540,18 @@ exports.confirmDownload = async (req, res, next) => {
 // ─── كتاب واحد بالـ ID
 exports.getBookById = async (req, res) => {
     try {
-        const book = await Book.findById(req.params.id)
+        let book = await Book.findById(req.params.id)
             .populate("categories", "name")
             .populate("sections", "name icon description")
             .populate("series", "name");
 
         if (!book) return res.status(404).json({ message: "Book not found" });
 
-        // Privacy Check: Only owner or admin can see non-published books
+        // Privacy Check: Only owner or admin can see non-published or rejected books
         const isOwner = req.user && book.createdBy.toString() === req.user._id.toString();
         const isAdmin = req.user && ["admin", "superadmin"].includes(req.user.role);
 
-        if (book.status !== "published" && !isOwner && !isAdmin) {
+        if ((book.status !== "published" || book.publishStatus === "rejected") && !isOwner && !isAdmin) {
             return res.status(404).json({ message: "يتم العمل حالياً على تجهيز هذا الكتاب." });
         }
 
@@ -695,13 +705,24 @@ exports.getRelatedBooks = async (req, res) => {
 
 exports.streamBook = async (req, res, next) => {
   try {
-    const book = await Book.findById(req.params.id);
+    let book = await Book.findById(req.params.id);
+    
     if (!book) {
       return res.status(404).json({ message: "Book not found" });
     }
+
+    // Security Check: Only Owner or Admin can stream non-published or rejected books
+    const isOwner = req.user && book.createdBy && book.createdBy.toString() === req.user._id.toString();
+    const isAdmin = req.user && ["admin", "superadmin"].includes(req.user.role);
+    
+    if ((book.status !== "published" || book.publishStatus === "rejected") && !isOwner && !isAdmin) {
+      return res.status(403).json({ message: "غير مصرح لك بمعاينة هذا الملف قبل نشره" });
+    }
+
     if (!book.driveFileId) {
       return res.status(404).json({ message: "ملف الكتاب غير متوفر" });
     }
+
 
     // تجهيز خيارات الطلب وتمرير الـ Range header إن وجد
     const options = { responseType: "stream" };

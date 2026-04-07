@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
 
 // Initialize the Supabase Client
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -11,21 +12,28 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
- * Upload an image buffer to Supabase Storage
- * @param {Buffer} buffer - The image buffer
+ * Upload an image (buffer or file path) to Supabase Storage
+ * @param {Buffer|string} fileData - The image buffer or file path
  * @param {string} fileName - Destination filename
  * @param {string} mimetype - File mimetype
  * @returns {Promise<string>} - The public URL of the uploaded image
  */
-const uploadToSupabase = async (buffer, fileName, mimetype = 'image/jpeg') => {
+const uploadToSupabase = async (fileData, fileName, mimetype = 'image/jpeg') => {
     try {
-        const bucketName = 'book-covers.';
+        const bucketName = 'book-covers.'; // Note: Added dot to match actual Supabase bucket name
+        let uploadPayload = fileData;
+
+        if (typeof fileData === 'string') {
+            console.log(`[Supabase] Reading file from disk: ${fileData}`);
+            uploadPayload = fs.readFileSync(fileData);
+        }
+
         console.log(`[Supabase] Attempting upload to bucket: "${bucketName}" at URL: ${supabaseUrl}`);
         
         // Upload the file to the bucket
         const { data, error } = await supabase.storage
             .from(bucketName)
-            .upload(fileName, buffer, {
+            .upload(fileName, uploadPayload, {
                 contentType: mimetype,
                 upsert: true // Overwrite if exists
             });
@@ -54,7 +62,7 @@ const uploadToSupabase = async (buffer, fileName, mimetype = 'image/jpeg') => {
 const deleteFromSupabase = async (fileName) => {
     try {
         const { error } = await supabase.storage
-            .from('book-covers')
+            .from('book-covers.')
             .remove([fileName]);
 
         if (error) throw error;

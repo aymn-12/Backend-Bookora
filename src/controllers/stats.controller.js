@@ -17,22 +17,24 @@ exports.getGlobalStats = async (req, res) => {
             topBooks,
             categoryStats
         ] = await Promise.all([
-            Book.countDocuments(),
+            Book.countDocuments({ publishStatus: { $in: ["approved", null] }, status: "published" }),
             User.countDocuments(),
             BookRequest.countDocuments(),
             Book.aggregate([
+                { $match: { publishStatus: { $in: ["approved", null] }, status: "published" } },
                 { $group: { _id: null, total: { $sum: "$downloadCount" } } }
             ]),
-            Book.distinct("author"),
-            Book.countDocuments({ createdAt: { $gte: startOfToday } }),
-            // Top 5 Downloaded Books
-            Book.find({})
+            Book.distinct("author", { publishStatus: { $in: ["approved", null] }, status: "published" }),
+            Book.countDocuments({ createdAt: { $gte: startOfToday }, publishStatus: { $in: ["approved", null] }, status: "published" }),
+            // Top 5 Downloaded Books (only published)
+            Book.find({ publishStatus: { $in: ["approved", null] }, status: "published" })
                 .sort({ downloadCount: -1 })
                 .limit(5)
                 .select("title author downloadCount coverImage")
                 .lean(),
-            // Category Distribution for Charts
+            // Category Distribution for Charts (only published)
             Book.aggregate([
+                { $match: { publishStatus: { $in: ["approved", null] }, status: "published" } },
                 { $unwind: "$sections" },
                 {
                     $lookup: {

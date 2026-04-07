@@ -6,6 +6,7 @@ const { normalizeArabic, generateFileHash } = require('../utils/string.utils');
 const { suggestSection }               = require('../utils/smartMapper.utils');
 const sharp                            = require('sharp');
 const authorService                    = require('../services/author.service');
+const fs                               = require('fs');
 
 // ─── POST /api/author/trial ────────────────────────────────────────────────
 exports.startTrial = async (req, res) => {
@@ -92,14 +93,30 @@ exports.submitBook = async (req, res, next) => {
         const bookFile  = req.files.bookFile[0];
         const coverFile = req.files.coverImage[0];
 
+        // ── Read files from disk ──────────────────────────────────────────
+        const bookBuffer  = fs.readFileSync(bookFile.path);
+        const coverBufferRaw = fs.readFileSync(coverFile.path);
+
         // ── Duplicate check ───────────────────────────────────────────────
-        const fileHash       = generateFileHash(bookFile.buffer);
+        const fileHash       = generateFileHash(bookBuffer);
         const normalizedTitle = normalizeArabic(title);
 
         const existingBook = await Book.findOne({
             $or: [{ fileHash }, { normalizedTitle }],
         });
         if (existingBook) {
+            console.log('[submitBook] Duplicate found:', { 
+                hashMatch: existingBook.fileHash === fileHash, 
+                titleMatch: existingBook.normalizedTitle === normalizedTitle 
+            });
+            if (existingBook.publishStatus === 'pending_review') {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: existingBook.fileHash === fileHash 
+                        ? 'هذا الملف قيد المراجعة حالياً' 
+                        : 'يوجد كتاب بعنوان مشابه قيد المراجعة' 
+                });
+            }
             const reason = existingBook.fileHash === fileHash
                 ? 'هذا الملف موجود بالفعل في المكتبة'
                 : 'يوجد كتاب بعنوان مشابه جداً';
@@ -119,9 +136,9 @@ exports.submitBook = async (req, res, next) => {
         const cleanCoverName = `cover-${fileHash}-${Date.now()}.jpg`;
 
         // ── Optimize cover ────────────────────────────────────────────────
-        let coverBuffer = coverFile.buffer;
+        let coverBuffer = coverBufferRaw;
         try {
-            coverBuffer = await sharp(coverFile.buffer)
+            coverBuffer = await sharp(coverBufferRaw)
                 .resize(600, 900, { fit: 'cover' })
                 .jpeg({ quality: 90 })
                 .toBuffer();
@@ -132,37 +149,39 @@ exports.submitBook = async (req, res, next) => {
         // ── Upload: PDF → Drive, Cover → Supabase (parallel) ─────────────
         const [bookDrive, supabaseCoverUrl] = await Promise.all([
             uploadToDrive({
-                buffer:       bookFile.buffer,
+                filePath:     bookFile.path,
                 mimetype:     bookFile.mimetype,
                 originalname: cleanBookName,
-                folderId:     process.env.GOOGLE_BOOKS_FOLDER_ID,
+                folderId:     process.env.GOOGLE_PENDING_BOOKS_FOLDER_ID, // Upload to PENDING folder
             }),
-            uploadToSupabase(coverBuffer, cleanCoverName, 'image/jpeg'),
+            uploadToSupabase(coverBuffer, cleanCoverName, "image/jpeg")
         ]);
 
-        uploadedBookId = bookDrive.fileId;
+        uploadedBookId  = bookDrive.fileId;
+        const supabaseCoverPath = cleanCoverName;
 
-        // ── Create book record with pending_review status ─────────────────
         const newBook = await Book.create({
             title,
             author,
             description,
-            categories:    categoriesArray,
-            sections:      sectionsArray,
-            format:        format || 'pdf',
-            fileUrl:       bookDrive.fileUrl,
-            coverImage:    supabaseCoverUrl,
-            driveFileId:   bookDrive.fileId,
-            driveCoverId:  'SUPABASE_' + cleanCoverName,
+            categories:   categoriesArray,
+            sections:     sectionsArray,
+            format:       format || "pdf",
+            fileUrl:      bookDrive.fileUrl,
+            coverImage:   supabaseCoverUrl,
+            driveFileId:  bookDrive.fileId,
+            driveCoverId: "SUPABASE_" + supabaseCoverPath,
             fileHash,
             normalizedTitle,
-            series:        series      || null,
-            seriesOrder:   seriesOrder || null,
-            status:        'published',         // visibility status
-            publishStatus: 'pending_review',    // review workflow
+            series:       series || null,
+            seriesOrder:  seriesOrder || null,
+            status:       "draft",
+            publishStatus: "pending_review",
             authorId:      req.user._id,
             createdBy:     req.user._id,
         });
+
+        console.log('[submitBook] Successfully created book:', newBook._id);
 
         // ── Increment upload quota counters ───────────────────────────────
         await authorService.incrementUploadCount(req.user._id);
@@ -174,10 +193,23 @@ exports.submitBook = async (req, res, next) => {
         });
 
     } catch (err) {
+        console.error('[submitBook] Error:', err);
         if (uploadedBookId) {
             const { deleteFromDrive } = require('../services/drive.service');
             await deleteFromDrive(uploadedBookId).catch(() => {});
         }
         next(err);
+    } finally {
+        // ── Cleanup temporary files ───────────────────────────────────────
+        if (req.files?.bookFile?.[0]?.path) {
+            fs.unlink(req.files.bookFile[0].path, (err) => {
+                if (err) console.error('[submitBook] Cleanup error (bookFile):', err);
+            });
+        }
+        if (req.files?.coverImage?.[0]?.path) {
+            fs.unlink(req.files.coverImage[0].path, (err) => {
+                if (err) console.error('[submitBook] Cleanup error (coverImage):', err);
+            });
+        }
     }
 };

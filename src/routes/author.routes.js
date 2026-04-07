@@ -10,13 +10,32 @@ router.use(authMiddleware);
 // ── Trial activation (no author access required yet) ───────────────────────
 router.post('/trial', authorCtrl.startTrial);
 
-// ── All routes below require active trial/subscription ─────────────────────
-router.use(checkAuthorAccess);
-
+// ── Public author info (for non-authors to see their status) ───────────────
 router.get('/dashboard', authorCtrl.getDashboard);
 router.get('/books',     authorCtrl.getMyBooks);
 
-// Submit book — same multipart upload as admin: PDF → Drive, Cover → Supabase
-router.post('/submit', checkUploadQuota, upload.fields([{ name: 'bookFile', maxCount: 1 }, { name: 'coverImage', maxCount: 1 }]), validateFileSizes, authorCtrl.submitBook);
+// ── All routes below require active trial/subscription ─────────────────────
+router.use(checkAuthorAccess);
+
+// Wrapper to catch Multer errors (like size limit)
+const submitBookUpload = upload.fields([
+    { name: 'bookFile',   maxCount: 1 }, 
+    { name: 'coverImage', maxCount: 1 }
+]);
+
+router.post('/submit', 
+    checkUploadQuota, 
+    (req, res, next) => {
+        submitBookUpload(req, res, (err) => {
+            if (err) {
+                console.error('[Multer Error]', err.message);
+                return res.status(400).json({ success: false, message: err.message });
+            }
+            next();
+        });
+    },
+    validateFileSizes, 
+    authorCtrl.submitBook
+);
 
 module.exports = router;

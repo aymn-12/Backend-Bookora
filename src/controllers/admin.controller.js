@@ -18,21 +18,36 @@ exports.getStats = async (req, res, next) => {
         ] = await Promise.all([
             // 1. Overview Totals
             (async () => {
-                const [users, admins, regular, books, authors, requests, downloads] = await Promise.all([
-                    User.countDocuments({ isVerified: true }),
-                    User.countDocuments({ isVerified: true, role: "admin" }),
-                    User.countDocuments({ isVerified: true, role: "user" }),
-                    Book.countDocuments(),
-                    Book.distinct("author").then(authors => authors.length),
+                const [[users, admins, regular], publishedAuthorsResult, pendingAuthorsResult, rejectedBooks, requests, downloads] = await Promise.all([
+                    Promise.all([
+                        User.countDocuments({ isVerified: true }),
+                        User.countDocuments({ isVerified: true, role: "admin" }),
+                        User.countDocuments({ isVerified: true, role: "user" }),
+                    ]),
+                    Book.distinct("author", { publishStatus: { $in: ["approved", null] }, status: "published" }),
+                    Book.distinct("author", { publishStatus: "pending_review" }),
+                    Book.countDocuments({ publishStatus: "rejected" }),
                     BookRequest.countDocuments(),
                     Book.aggregate([{ $group: { _id: null, total: { $sum: "$downloadCount" } } }])
                 ]);
+
+                const publishedAuthorIds = new Set(publishedAuthorsResult.map(id => id.toString()));
+                const pendingOnlyAuthors = pendingAuthorsResult.filter(id => !publishedAuthorIds.has(id.toString()));
+
+                const books = await Book.countDocuments({ publishStatus: { $in: ["approved", null] }, status: "published" });
+                const pendingBooks = await Book.countDocuments({ publishStatus: "pending_review" });
+                const approvedBooks = await Book.countDocuments({ publishStatus: "approved" });
+
                 return {
                     totalUsers: users,
                     totalAdmins: admins,
                     totalRegularUsers: regular,
                     totalBooks: books,
-                    totalAuthors: authors,
+                    pendingBooks,
+                    approvedBooks,
+                    rejectedBooks,
+                    totalAuthors: publishedAuthorsResult.length,
+                    pendingAuthors: pendingOnlyAuthors.length,
                     totalRequests: requests,
                     totalDownloads: downloads.length > 0 ? downloads[0].total : 0
                 };
@@ -120,48 +135,6 @@ exports.getAllUsers = async (req, res, next) => {
                 hasNext:    page < Math.ceil(total / limit),
                 hasPrev:    page > 1,
             },
-        });
-    } catch (error) { next(error); }
-};
-
-// ─── إدارة اشتراك المؤلف (Superadmin Only)
-exports.manageAuthorSubscription = async (req, res, next) => {
-    try {
-        const { action } = req.body; // "revoke" | "reset_trial"
-
-        if (!["revoke", "reset_trial"].includes(action)) {
-            return res.status(400).json({ message: "الإجراء غير صالح. يجب أن يكون revoke أو reset_trial" });
-        }
-
-        const target = await User.findById(req.params.id);
-        if (!target) return res.status(404).json({ message: "المستخدم غير موجود" });
-
-        if (action === "revoke") {
-            // Remove author access completely
-            target.authorSubscription = {
-                status: "none",
-                trialEndsAt: null,
-                trialBooksUsed: 0,
-                monthlyUploadCount: 0,
-            };
-        } else if (action === "reset_trial") {
-            // Give a fresh 15-day trial
-            const trialEndsAt = new Date();
-            trialEndsAt.setDate(trialEndsAt.getDate() + 15);
-            target.authorSubscription = {
-                status: "trial",
-                trialEndsAt,
-                trialBooksUsed: 0,
-                monthlyUploadCount: 0,
-            };
-        }
-
-        await target.save();
-
-        res.json({
-            success: true,
-            message: action === "revoke" ? "تم إلغاء صلاحيات المؤلف" : "تم تجديد التجربة المجانية",
-            data: target.authorSubscription,
         });
     } catch (error) { next(error); }
 };
@@ -266,6 +239,7 @@ exports.reviewBook = async (req, res, next) => {
         // Files are already on Google Drive (PDF) + Supabase (cover) — just update status
         const updateData = {
             publishStatus: action === "approve" ? "approved" : "rejected",
+            status: action === "approve" ? "published" : "draft",
             reviewedBy:    req.user._id,
             reviewedAt:    new Date(),
             ...(action === "reject" && notes ? { reviewNotes: notes } : {}),

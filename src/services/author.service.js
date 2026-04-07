@@ -48,11 +48,8 @@ const checkUploadQuota = async (userId) => {
         return { allowed: false, reason: 'Trial expired' };
     }
 
-    // ── Active trial: check book limit ─────────────────────────────────────
+    // ── Active trial: UNLIMITED uploads during the 15-day window ──────────
     if (sub.status === 'trial') {
-        if (sub.trialBooksUsed >= TRIAL_BOOK_LIMIT) {
-            return { allowed: false, reason: `Trial book limit reached (${TRIAL_BOOK_LIMIT} books)` };
-        }
         return { allowed: true };
     }
 
