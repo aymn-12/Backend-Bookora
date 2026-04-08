@@ -15,8 +15,8 @@ const generateToken = (id, role) => {
 const attachAccessToken = (res, token) => {
     res.cookie("accessToken", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: true,
+        sameSite: "none",
         path: "/",
         maxAge: 15 * 60 * 1000
     });
@@ -34,7 +34,7 @@ const attachTokens = async (user, res) => {
         httpOnly: true,
         secure: true,
         sameSite: "none",
-        maxAge: 30 * 24 * 60 * 60 * 1000,
+        maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     const csrfToken = generateCsrfToken();
@@ -296,7 +296,7 @@ exports.refreshToken = async (req, res, next) => {
             httpOnly: true,
             secure: true, // Required for sameSite: "none"
             sameSite: "none", // Allows cookies between Vercel and Render
-            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (synchronized with attachTokens)
         });
 
         // ─── CSRF: rotate CSRF token on each refresh (token rotation)
@@ -404,7 +404,7 @@ exports.logout = async (req, res, next) => {
         logger.info("User logged out", { userId: req.user._id });
 
         res.clearCookie("refreshToken", { secure: true, sameSite: "none" });
-        res.clearCookie("accessToken", { path: "/" });
+        res.clearCookie("accessToken", { path: "/", secure: true, sameSite: "none" });
         // ─── CSRF: clear the CSRF cookie on logout
         clearCsrfCookie(res);
         res.json({ success: true, message: "تم تسجيل الخروج بنجاح" });

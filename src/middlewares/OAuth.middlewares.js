@@ -24,10 +24,18 @@ module.exports = async (req, res, next) =>{
         req.user = user
         next()
 
-    }catch(error){
-        return res.status(401).json({ 
+    } catch (error) {
+        if (error.name === "TokenExpiredError") {
+            return res.status(401).json({
+                success: false,
+                code: "TOKEN_EXPIRED",
+                message: "انتهت صلاحية الجلسة، جاري تجديدها..."
+            });
+        }
+        return res.status(401).json({
             success: false,
-            message: "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مرة أخرى." 
+            code: "TOKEN_INVALID",
+            message: "جلسة غير صالحة، يرجى تسجيل الدخول مرة أخرى."
         });
     }
 }
