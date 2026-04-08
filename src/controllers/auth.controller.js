@@ -7,7 +7,7 @@ const { generateOTP, hashOTP, isOTPExpired, generateRefreshToken } = require("..
 const logger = require("../utils/logger.utils");
 const { generateCsrfToken, setCsrfCookie, clearCsrfCookie } = require("../utils/csrf.utils");
 
-const generateToken = (id, role) => {
+const generateToken = (id, role) => { //accessToken
     return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
