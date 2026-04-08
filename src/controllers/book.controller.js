@@ -193,7 +193,108 @@ exports.getAllBook = async (req, res) => {
             }
         }
 
-        // البحث النصي الشامل وتحديد الحقول
+        const sortOptions = {
+            newest:    { createdAt: -1, _id: -1 },
+            oldest:    { createdAt: 1, _id: 1 },
+            downloads: { downloadCount: -1, _id: -1 },
+            rating:    { bayesianRating: -1, reviewCount: -1, _id: -1 },
+            title:     { title: 1, _id: -1 },
+        };
+        let sortBy = sortOptions[sort] || sortOptions.newest;
+
+        // ─── Atlas Search Logic (with Regex Fallback) ───
+        if (q && q.trim()) {
+            try {
+                const searchFields = searchIn ? searchIn.split(",") : ["title", "author", "description"];
+                const shouldClauses = [];
+
+                if (searchFields.includes("title")) {
+                    shouldClauses.push({
+                        text: {
+                            query: q,
+                            path: "title",
+                            fuzzy: { maxEdits: 1, prefixLength: 2 },
+                            score: { boost: { value: 5 } }
+                        }
+                    });
+                }
+                if (searchFields.includes("author")) {
+                    shouldClauses.push({
+                        text: {
+                            query: q,
+                            path: "author",
+                            fuzzy: { maxEdits: 1, prefixLength: 2 },
+                            score: { boost: { value: 3 } }
+                        }
+                    });
+                }
+                if (searchFields.includes("description")) {
+                    shouldClauses.push({
+                        text: {
+                            query: q,
+                            path: "description",
+                            score: { boost: { value: 1 } }
+                        }
+                    });
+                }
+
+                const atlasPipeline = [
+                    {
+                        $search: {
+                            index: "books_search",
+                            compound: {
+                                should: shouldClauses,
+                                minimumShouldMatch: 1
+                            }
+                        }
+                    },
+                    { $match: matchStage },
+                    { $sort: { score: { $meta: "searchScore" }, ...sortBy } },
+                    { $skip: skip },
+                    { $limit: limit },
+                    {
+                        $project: {
+                            title: 1, author: 1, coverImage: 1, format: 1,
+                            downloadCount: 1, categories: 1, sections: 1,
+                            createdAt: 1, series: 1, status: 1,
+                            score: { $meta: "searchScore" }
+                        }
+                    }
+                ];
+
+                const countPipeline = [
+                    { $search: { index: "books_search", compound: { should: shouldClauses, minimumShouldMatch: 1 } } },
+                    { $match: matchStage },
+                    { $count: "total" }
+                ];
+
+                const [books, countResult] = await Promise.all([
+                    Book.aggregate(atlasPipeline),
+                    Book.aggregate(countPipeline)
+                ]);
+
+                const total = countResult[0]?.total || 0;
+
+                return res.json({
+                    success: true,
+                    data: books,
+                    meta: {
+                        total,
+                        page,
+                        limit,
+                        totalPages: Math.ceil(total / limit),
+                        hasNextPage: page * limit < total,
+                        hasPrevPage: page > 1
+                    }
+                });
+
+            } catch (searchError) {
+                console.error("Atlas Search failed, falling back to regex:", searchError);
+                // Fallback logic continues below (searchUsed = true/false)
+            }
+        }
+
+        // ─── Fallback / Normal Aggregation Logic ───
         let searchUsed = false;
         if (q && q.trim()) {
             const searchFields = searchIn ? searchIn.split(",") : ["title", "author", "description"];
@@ -203,7 +304,6 @@ exports.getAllBook = async (req, res) => {
                 matchStage.$text = { $search: q };
                 searchUsed = true;
             } else {
-                // البحث باستخدام Regex في الحقول المخصصة
                 const sanitizedQuery = q.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
                 const orConditions = searchFields.map(field => ({
                     [field]: { $regex: sanitizedQuery, $options: "i" }
@@ -212,36 +312,25 @@ exports.getAllBook = async (req, res) => {
             }
         }
 
-        // ─── Seamless Personalization (مختارات لك مخفية ضمنياً) ─── //
+        // Seamless Personalization
         let personalizedCats = [];
         const isGenericFeed = !searchUsed && !category && !section && !ids && !author && !mine && !status && !createdBy && !series;
-        // Apply personalization only when browsing generic lists (no filters, or default/newest sorting)
         if ((!sort || sort === "newest") && req.user && isGenericFeed) {
             const UserParams = require("../models/user.models");
             const dbUser = await UserParams.findById(req.user._id).select("interestScores").lean();
             if (dbUser && dbUser.interestScores && Object.keys(dbUser.interestScores).length > 0) {
                  personalizedCats = Object.entries(dbUser.interestScores)
                      .sort((a,b) => b[1] - a[1])
-                     .slice(0, 5) // Top 5 interested categories
+                     .slice(0, 5)
                      .map(e => {
                          try { return new mongoose.Types.ObjectId(e[0]); } catch(err) { return null; }
                      }).filter(id => id);
             }
         }
 
-        const sortOptions = {
-            newest:    { createdAt: -1, _id: -1 },
-            oldest:    { createdAt: 1, _id: 1 },
-            downloads: { downloadCount: -1, _id: -1 },
-            rating:    { bayesianRating: -1, reviewCount: -1, _id: -1 }, // Updated to use Bayesian Average
-            title:     { title: 1, _id: -1 },
-        };
-
-        let sortBy = sortOptions[sort] || sortOptions.newest;
         if (searchUsed) {
             sortBy = { score: { $meta: "textScore" }, ...sortBy };
         } else if (personalizedCats.length > 0) {
-            // Sort by matched interests first, then newest
             sortBy = { personalizedBoost: -1, ...sortBy };
         }
 
@@ -771,4 +860,66 @@ exports.streamBook = async (req, res, next) => {
       res.end();
     }
   }
+};
+
+// ─── جلب اقتراحات البحث (Atlas Search Autocomplete)
+exports.getBookSuggestions = async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.trim().length < 2) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const pipeline = [
+            {
+                $search: {
+                    index: "books_search",
+                    compound: {
+                        should: [
+                            {
+                                autocomplete: {
+                                    query: q,
+                                    path: "title",
+                                    fuzzy: { maxEdits: 1 },
+                                    tokenOrder: "sequential",
+                                    score: { boost: { value: 2 } }
+                                }
+                            },
+                            {
+                                autocomplete: {
+                                    query: q,
+                                    path: "author",
+                                    fuzzy: { maxEdits: 1 },
+                                    tokenOrder: "sequential"
+                                }
+                            }
+                        ],
+                        minimumShouldMatch: 1
+                    }
+                }
+            },
+            {
+                $match: {
+                    status: "published",
+                    publishStatus: { $nin: ["pending_review", "rejected"] }
+                }
+            },
+            { $limit: 6 },
+            {
+                $project: {
+                    title: 1,
+                    author: 1,
+                    coverImage: 1,
+                    _id: 1
+                }
+            }
+        ];
+
+        const results = await Book.aggregate(pipeline);
+        res.json({ success: true, data: results });
+
+    } catch (error) {
+        console.error("[getBookSuggestions] Error:", error);
+        res.json({ success: true, data: [] }); // fail silently
+    }
 };
