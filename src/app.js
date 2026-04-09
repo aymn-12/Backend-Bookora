@@ -143,7 +143,8 @@ app.use("/api/author",     authorRoutes);
 
 // ─── Static Files
 app.use("/uploads", express.static("uploads"));
-
+app.get("/api/health", (req, res) => res.json({ ok: true }));
+ 
 /*app.get("/api/auth/google/callback", (req, res) => {
     res.json({ code: req.query.code });
 });*/ 
