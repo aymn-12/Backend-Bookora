@@ -4,6 +4,8 @@ const CSRF_COOKIE_NAME = "csrf-token";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const CSRF_TOKEN_LENGTH = 32; // 256-bit entropy
 
+const COOKIE_DOMAIN = ".bkora.online";
+
 /**
  * Generates a cryptographically secure random CSRF token.
  * @returns {string} hex-encoded random token
@@ -28,7 +30,8 @@ const setCsrfCookie = (res, token) => {
     res.cookie(CSRF_COOKIE_NAME, token, {
         httpOnly: false,   // Must be readable by JS for Double Submit pattern
         secure: true,
-        sameSite: "none",  // Match the refreshToken cookie settings
+        sameSite: "none",
+        domain: COOKIE_DOMAIN, // Shared across all subdomains (api.bkora.online ↔ bkora.online)
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days — same as refreshToken
     });
 };
@@ -41,6 +44,7 @@ const clearCsrfCookie = (res) => {
     res.clearCookie(CSRF_COOKIE_NAME, {
         secure: true,
         sameSite: "none",
+        domain: COOKIE_DOMAIN,
     });
 };
 
