@@ -9,7 +9,7 @@ const CSRF_TOKEN_LENGTH = 32; // 256-bit entropy
  * @returns {string} hex-encoded random token
  */
 const generateCsrfToken = () => {
-    return crypto.randomBytes(CSRF_TOKEN_LENGTH).toString("hex");
+  return crypto.randomBytes(CSRF_TOKEN_LENGTH).toString("hex");
 };
 
 /**
@@ -25,12 +25,13 @@ const generateCsrfToken = () => {
  * @param {string} token
  */
 const setCsrfCookie = (res, token) => {
-    res.cookie(CSRF_COOKIE_NAME, token, {
-        httpOnly: false,   // Must be readable by JS for Double Submit pattern
-        secure: true,
-        sameSite: "none",  // Match the refreshToken cookie settings
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days — same as refreshToken
-    });
+  res.cookie(CSRF_COOKIE_NAME, token, {
+    httpOnly: false, // Must be readable by JS for Double Submit pattern
+    secure: true,
+    sameSite: "none", // Match the refreshToken cookie settings
+    domain: ".bkora.online", // Allow subdomain sharing (api.bkora.online <-> bkora.online)
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days — same as refreshToken
+  });
 };
 
 /**
@@ -38,16 +39,17 @@ const setCsrfCookie = (res, token) => {
  * @param {import("express").Response} res
  */
 const clearCsrfCookie = (res) => {
-    res.clearCookie(CSRF_COOKIE_NAME, {
-        secure: true,
-        sameSite: "none",
-    });
+  res.clearCookie(CSRF_COOKIE_NAME, {
+    secure: true,
+    sameSite: "none",
+    domain: ".bkora.online", // Must match the cookie's domain to clear it properly
+  });
 };
 
 module.exports = {
-    CSRF_COOKIE_NAME,
-    CSRF_HEADER_NAME,
-    generateCsrfToken,
-    setCsrfCookie,
-    clearCsrfCookie,
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  generateCsrfToken,
+  setCsrfCookie,
+  clearCsrfCookie,
 };
