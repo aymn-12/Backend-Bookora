@@ -131,5 +131,6 @@ module.exports = {
     uploadToDrive,
     deleteFromDrive,
     moveFileInDrive,
-    drive, // Export the drive instance for streaming and other direct API calls
+    drive,
+    oauth2Client, // مطلوب للحصول على access token مباشرةً في streamBook
 };
