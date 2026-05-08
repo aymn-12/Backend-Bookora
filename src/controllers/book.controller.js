@@ -1,7 +1,8 @@
 const mongoose = require("mongoose");
 const fs = require("fs");
+const axios = require("axios");
 const Book = require("../models/book.models");
-const { uploadToDrive, deleteFromDrive, drive } = require("../services/drive.service");
+const { uploadToDrive, deleteFromDrive, drive, oauth2Client } = require("../services/drive.service");
 const { uploadToSupabase, deleteFromSupabase } = require("../services/supabase.service");
 const Category = require("../models/category.models");
 const Section = require("../models/section.models");
@@ -812,43 +813,45 @@ exports.streamBook = async (req, res, next) => {
       return res.status(404).json({ message: "ملف الكتاب غير متوفر" });
     }
 
-
-    // تجهيز خيارات الطلب وتمرير الـ Range header إن وجد
-    const options = { responseType: "stream" };
-    if (req.headers.range) {
-      options.headers = { Range: req.headers.range };
+    // الحصول على access token حديث من oauth2Client
+    const { token } = await oauth2Client.getAccessToken();
+    if (!token) {
+      return res.status(500).json({ message: "فشل الحصول على صلاحية الوصول لـ Drive" });
     }
 
-    const driveResponse = await drive.files.get(
-      { fileId: book.driveFileId, alt: "media" },
-      options
-    );
+    // بناء الـ headers — نمرر Range مباشرة لو وجد
+    const driveHeaders = { Authorization: `Bearer ${token}` };
+    if (req.headers.range) {
+      driveHeaders["Range"] = req.headers.range;
+    }
 
-    // نسخ الـ Headers الأساسية من استجابة Google Drive وتمريرها للمتصفح (لدعم الـ Chunking)
-    res.status(driveResponse.status); // 200 (OK) أو 206 (Partial Content)
-    
-    const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
-    headersToForward.forEach(h => {
-      if (driveResponse.headers[h]) {
-        res.setHeader(h, driveResponse.headers[h]);
-      }
+    // axios مباشرة → يضمن تمرير Range header بشكل صحيح
+    // بعكس googleapis client الذي لا يضمن ذلك
+    const driveResponse = await axios({
+      method: "GET",
+      url: `https://www.googleapis.com/drive/v3/files/${book.driveFileId}?alt=media`,
+      headers: driveHeaders,
+      responseType: "stream",
     });
 
-    if (!res.getHeader('content-type')) {
+    res.status(driveResponse.status);
+
+    const headersToForward = ["content-type", "content-length", "content-range", "accept-ranges"];
+    headersToForward.forEach(h => {
+      if (driveResponse.headers[h]) res.setHeader(h, driveResponse.headers[h]);
+    });
+
+    if (!res.getHeader("content-type")) {
       res.setHeader("Content-Type", "application/pdf");
     }
-    
+
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(book.title)}.pdf"`);
-    // Cache PDF stream for 24 hours (CDN friendly)
     res.setHeader("Cache-Control", "public, max-age=86400");
 
-    // ─── Stream مباشرة من Drive للمتصفح
     driveResponse.data
       .on("error", (err) => {
         console.error("[streamBook] Drive stream error:", err.message);
-        if (!res.headersSent) {
-          res.status(500).json({ message: "فشل تحميل الملف من Drive" });
-        }
+        if (!res.headersSent) res.status(500).json({ message: "فشل تحميل الملف من Drive" });
       })
       .pipe(res);
 
