@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const fs = require("fs");
 const axios = require("axios");
+const pdfParse = require("pdf-parse");
 const Book = require("../models/book.models");
 const { uploadToDrive, deleteFromDrive, drive, oauth2Client } = require("../services/drive.service");
 const { uploadToSupabase, deleteFromSupabase } = require("../services/supabase.service");
@@ -33,6 +34,17 @@ exports.createBook = async (req, res, next) => {
         // ─── Read files from disk ──────────────────────────────────────────
         const bookBuffer      = fs.readFileSync(bookFile.path);
         const coverBufferRaw  = fs.readFileSync(coverFile.path);
+
+        // ─── استخراج عدد الصفحات من PDF
+        let pageCount = null;
+        if (bookFile.mimetype === "application/pdf") {
+            try {
+                const pdfData = await pdfParse(bookBuffer, { max: 0 }); // max:0 = لا تستخرج النص، فقط الـ metadata
+                pageCount = pdfData.numpages || null;
+            } catch {
+                console.warn("[createBook] Could not extract page count from PDF");
+            }
+        }
 
         // ─── التحقق الذكي من التكرار (Smarter Duplication Check)
         const fileHash = generateFileHash(bookBuffer);
@@ -103,6 +115,7 @@ exports.createBook = async (req, res, next) => {
             driveCoverId: "SUPABASE_" + supabaseCoverPath,
             fileHash,
             normalizedTitle,
+            pageCount,
             series:       series || null,
             seriesOrder:  seriesOrder || null,
             status:       status || "published",
