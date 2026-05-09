@@ -6,7 +6,8 @@ const roleMiddleware = require("../middlewares/role.middlewares");
 const optionalAuth = require("../middlewares/optionalAuth.middlewares");
 const validateMiddleware = require("../middlewares/validate.middlewares");
 const rateLimit = require("express-rate-limit");
-const { updateBookSchema } = require("../validations/book.validation");
+const { updateBookSchema, submitBookSchema } = require("../validations/book.validation");
+const verifiedMiddleware = require("../middlewares/verified.middleware");
 const { streamBook, getReadingProgress, updateReadingProgress } = require("../controllers/book.controller");
 
 const bookLimiter = rateLimit({
@@ -25,6 +26,32 @@ const bookUpload = upload.fields([
 router.get("/",    bookLimiter, optionalAuth, bookCtrl.getAllBook);
 router.get("/check-title", bookLimiter, bookCtrl.checkTitleStatus); 
 router.get("/suggest", bookLimiter, bookCtrl.getBookSuggestions);
+
+// ─── User Book Submission (authenticated users)
+router.post("/submit",
+    bookLimiter,
+    authMiddleware,
+    verifiedMiddleware,
+    (req, res, next) => {
+        bookUpload(req, res, (err) => {
+            if (err) {
+                console.error("[Multer Error]", err.message);
+                return res.status(400).json({ success: false, message: err.message });
+            }
+            next();
+        });
+    },
+    validateFileSizes,
+    validateMiddleware(submitBookSchema),
+    bookCtrl.submitUserBook
+);
+
+router.get("/my-submissions",
+    bookLimiter,
+    authMiddleware,
+    bookCtrl.getMySubmissions
+);
+
 router.get("/:id", bookLimiter, bookCtrl.getBookById);
 router.get("/:id/related", bookLimiter, bookCtrl.getRelatedBooks);
 router.get("/:id/download",              bookLimiter, optionalAuth, bookCtrl.downloadBook);
@@ -37,7 +64,7 @@ router.post("/",
     (req, res, next) => {
         bookUpload(req, res, (err) => {
             if (err) {
-                console.error('[Multer Error]', err.message);
+                console.error("[Multer Error]", err.message);
                 return res.status(400).json({ success: false, message: err.message });
             }
             next();
@@ -46,6 +73,8 @@ router.post("/",
     validateFileSizes,
     bookCtrl.createBook
 );
+
+
 
 router.get("/:id/stream", authMiddleware, streamBook);
 router.get("/:id/progress", authMiddleware, getReadingProgress);

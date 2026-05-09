@@ -11,18 +11,19 @@ const { generateCsrfToken, setCsrfCookie, clearCsrfCookie } = require("../utils/
 const generateToken = (id, role) => { //accessToken
   return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "15m" });
 };
-const attachAccessToken = (res, token) => {
+const attachAccessToken = (req, res, token) => {
+  const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
   res.cookie("accessToken", token, {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: !isLocalhost,
+    sameSite: isLocalhost ? "lax" : "none",
     path: "/",
-    domain: ".bkora.online",
+    ...(isLocalhost ? {} : { domain: ".bkora.online" }),
     maxAge: 15 * 60 * 1000
   });
 };
 
-const attachTokens = async (user, res) => {
+const attachTokens = async (req, user, res) => {
   const accessToken = generateToken(user._id, user.role);
   const refreshToken = generateRefreshToken();
 
@@ -30,18 +31,19 @@ const attachTokens = async (user, res) => {
 
   await user.save();
 
+  const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    domain: ".bkora.online",
+    secure: !isLocalhost,
+    sameSite: isLocalhost ? "lax" : "none",
+    ...(isLocalhost ? {} : { domain: ".bkora.online" }),
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
   const csrfToken = generateCsrfToken();
-  setCsrfCookie(res, csrfToken);
+  setCsrfCookie(req, res, csrfToken);
 
-  attachAccessToken(res, accessToken);
+  attachAccessToken(req, res, accessToken);
 };
 
 
@@ -118,7 +120,7 @@ exports.verifyEmail = async (req, res, next) => {
     logger.info("Email verified", { email: pending.email });
     await PendingUser.deleteOne({ email });
 
-    await attachTokens(user, res);
+    await attachTokens(req, user, res);
 
     res.status(201).json({
       success: true,
@@ -186,7 +188,7 @@ exports.login = async (req, res, next) => {
     }
 
 
-    await attachTokens(user, res);
+    await attachTokens(req, user, res);
     logger.info("User logged in", { email, userId: user._id });
 
     res.status(200).json({
@@ -295,20 +297,21 @@ exports.refreshToken = async (req, res, next) => {
     user.refreshToken = hashOTP(newRefreshToken);
     await user.save();
 
+    const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
-      secure: true, // Required for sameSite: "none"
-      sameSite: "none", // Allows cookies between Vercel and Render
-      domain: ".bkora.online",
+      secure: !isLocalhost,
+      sameSite: isLocalhost ? "lax" : "none",
+      ...(isLocalhost ? {} : { domain: ".bkora.online" }),
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (synchronized with attachTokens)
     });
 
     // ─── CSRF: rotate CSRF token on each refresh (token rotation)
     const newCsrfToken = generateCsrfToken();
-    setCsrfCookie(res, newCsrfToken);
+    setCsrfCookie(req, res, newCsrfToken);
 
     const accessToken = generateToken(user._id, user.role);
-    attachAccessToken(res, accessToken);
+    attachAccessToken(req, res, accessToken);
 
     res.json({ success: true, csrfToken: newCsrfToken });
   } catch (error) { next(error); }
@@ -419,11 +422,23 @@ exports.logout = async (req, res, next) => {
 
     logger.info("User logged out", { userId: req.user?._id });
 
-    res.clearCookie("refreshToken", { secure: true, sameSite: "none", domain: ".bkora.online" });
-    res.clearCookie("accessToken", { path: "/", secure: true, sameSite: "none", domain: ".bkora.online" });
+    const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
+    
+    res.clearCookie("refreshToken", { 
+      secure: !isLocalhost, 
+      sameSite: isLocalhost ? "lax" : "none", 
+      ...(isLocalhost ? {} : { domain: ".bkora.online" }) 
+    });
+    
+    res.clearCookie("accessToken", { 
+      path: "/", 
+      secure: !isLocalhost, 
+      sameSite: isLocalhost ? "lax" : "none", 
+      ...(isLocalhost ? {} : { domain: ".bkora.online" }) 
+    });
 
     // ─── CSRF: clear the CSRF cookie on logout
-    clearCsrfCookie(res);
+    clearCsrfCookie(req, res);
 
     res.json({ success: true, message: "تم تسجيل الخروج بنجاح" });
   } catch (error) { next(error); }

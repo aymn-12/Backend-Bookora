@@ -26,25 +26,28 @@ const generateCsrfToken = () => {
  * @param {import("express").Response} res
  * @param {string} token
  */
-const setCsrfCookie = (res, token) => {
+const setCsrfCookie = (req, res, token) => {
+  const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
   res.cookie(CSRF_COOKIE_NAME, token, {
     httpOnly: false, // Must be readable by JS for Double Submit pattern
-    secure: true,
-    sameSite: "none",
-    domain: COOKIE_DOMAIN, // Shared across all subdomains (api.bkora.online ↔ bkora.online)
+    secure: !isLocalhost,
+    sameSite: isLocalhost ? "lax" : "none",
+    ...(isLocalhost ? {} : { domain: COOKIE_DOMAIN }),
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days — same as refreshToken
   });
 };
 
 /**
  * Clears the CSRF cookie on logout.
+ * @param {import("express").Request} req
  * @param {import("express").Response} res
  */
-const clearCsrfCookie = (res) => {
+const clearCsrfCookie = (req, res) => {
+  const isLocalhost = req.hostname === "localhost" || req.hostname === "127.0.0.1";
   res.clearCookie(CSRF_COOKIE_NAME, {
-    secure: true,
-    sameSite: "none",
-    domain: COOKIE_DOMAIN, // Must match the cookie's domain to clear it properly
+    secure: !isLocalhost,
+    sameSite: isLocalhost ? "lax" : "none",
+    ...(isLocalhost ? {} : { domain: COOKIE_DOMAIN }),
   });
 };
 

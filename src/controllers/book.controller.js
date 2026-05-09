@@ -469,6 +469,162 @@ exports.updateReadingProgress = async (req, res) => {
     }
 };
 
+// ─── User Book Submission
+exports.submitUserBook = async (req, res, next) => {
+    let uploadedBookId = null;
+
+    try {
+        const { title, author, description, categories, sections, format, series, seriesOrder } = req.body;
+
+        if (!req.files?.bookFile?.[0]) {
+            return res.status(400).json({ success: false, message: "ملف الكتاب مطلوب (bookFile)" });
+        }
+        if (!req.files?.coverImage?.[0]) {
+            return res.status(400).json({ success: false, message: "صورة الغلاف مطلوبة (coverImage)" });
+        }
+
+        const bookFile  = req.files.bookFile[0];
+        const coverFile = req.files.coverImage[0];
+
+        const bookBuffer      = fs.readFileSync(bookFile.path);
+        const coverBufferRaw  = fs.readFileSync(coverFile.path);
+
+        let pageCount = null;
+        if (bookFile.mimetype === "application/pdf") {
+            try {
+                const pdfData = await pdfParse(bookBuffer, { max: 0 });
+                pageCount = pdfData.numpages || null;
+            } catch {
+                console.warn("[submitUserBook] Could not extract page count from PDF");
+            }
+        }
+
+        const fileHash       = generateFileHash(bookBuffer);
+        const normalizedTitle = normalizeArabic(title);
+
+        const existingBook = await Book.findOne({
+            $or: [{ fileHash }, { normalizedTitle }],
+        });
+        if (existingBook) {
+            const reason = existingBook.fileHash === fileHash
+                ? "هذا الملف موجود بالفعل"
+                : "هذا الكتاب موجود بالفعل تحت عنوان مشابه";
+            return res.status(400).json({
+                success: false,
+                message: reason,
+                data: { existingBookId: existingBook._id }
+            });
+        }
+
+        const categoriesArray = Array.isArray(categories) ? categories : categories ? [categories] : [];
+        let   sectionsArray   = Array.isArray(sections) ? sections : sections ? [sections] : [];
+        if (sectionsArray.length === 0) {
+            sectionsArray = [suggestSection(title)];
+        }
+
+        const bookExt        = bookFile.originalname.split(".").pop();
+        const cleanBookName  = `${title}.${bookExt}`;
+        const cleanCoverName = `cover-${fileHash}-${Date.now()}.jpg`;
+
+        let coverBuffer = coverBufferRaw;
+        try {
+            coverBuffer = await sharp(coverBufferRaw)
+                .resize(600, 900, { fit: "cover" })
+                .jpeg({ quality: 90 })
+                .toBuffer();
+        } catch (e) {
+            console.error("[submitUserBook] Sharp failed:", e.message);
+            coverBuffer = coverBufferRaw;
+        }
+
+        const pendingFolderId = process.env.GOOGLE_PENDING_BOOKS_FOLDER_ID || process.env.GOOGLE_BOOKS_FOLDER_ID;
+        const [bookDrive, supabaseCoverUrl] = await Promise.all([
+            uploadToDrive({
+                filePath:     bookFile.path,
+                mimetype:     bookFile.mimetype,
+                originalname: cleanBookName,
+                folderId:     pendingFolderId,
+            }),
+            uploadToSupabase(coverBuffer, cleanCoverName, "image/jpeg"),
+        ]);
+
+        uploadedBookId = bookDrive.fileId;
+        const supabaseCoverPath = cleanCoverName;
+
+        const newBook = await Book.create({
+            title,
+            author,
+            description: description || "",
+            categories:  categoriesArray,
+            sections:    sectionsArray,
+            format:      format || "pdf",
+            fileUrl:     bookDrive.fileUrl,
+            coverImage:  supabaseCoverUrl,
+            driveFileId: bookDrive.fileId,
+            driveCoverId: "SUPABASE_" + supabaseCoverPath,
+            fileHash,
+            normalizedTitle,
+            pageCount,
+            series:       series || null,
+            seriesOrder:  seriesOrder || null,
+            status:       "draft",
+            publishStatus: "pending_review",
+            authorId:      null,
+            createdBy:     req.user._id,
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "تم إرسال كتابك بنجاح! سيتم مراجعته من قِبل فريقنا قريباً.",
+            data: { bookId: newBook._id },
+        });
+
+    } catch (error) {
+        if (uploadedBookId) await deleteFromDrive(uploadedBookId);
+        console.error("[submitUserBook] Error:", error.message);
+        next(error);
+    } finally {
+        if (req.files?.bookFile?.[0]?.path)   fs.unlink(req.files.bookFile[0].path,   () => {});
+        if (req.files?.coverImage?.[0]?.path) fs.unlink(req.files.coverImage[0].path, () => {});
+    }
+};
+
+// ─── User's Own Submissions
+exports.getMySubmissions = async (req, res) => {
+    try {
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = Math.min(20, parseInt(req.query.limit) || 10);
+        const skip  = (page - 1) * limit;
+
+        const filter = { createdBy: req.user._id };
+
+        const [books, total] = await Promise.all([
+            Book.find(filter)
+                .select("title author coverImage publishStatus status reviewNotes createdAt")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Book.countDocuments(filter),
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: books,
+            meta: {
+                total,
+                page,
+                pages: Math.ceil(total / limit),
+                hasNext: page < Math.ceil(total / limit),
+                hasPrev: page > 1,
+            },
+        });
+    } catch (error) {
+        console.error("[getMySubmissions] Error:", error);
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء جلب بياناتك." });
+    }
+};
+
 // ─── تعديل كتاب
 exports.updateBook = async (req, res, next) => {
     try {

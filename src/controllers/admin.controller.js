@@ -3,6 +3,8 @@ const Book = require("../models/book.models");
 const Review = require("../models/review.models");
 const Category = require("../models/category.models");
 const BookRequest = require("../models/bookRequest.models");
+const { moveFileInDrive, deleteFromDrive } = require("../services/drive.service");
+const { deleteFromSupabase } = require("../services/supabase.service");
 
 // ─── Dashboard Stats (Advanced Nested Structure)
 exports.getStats = async (req, res, next) => {
@@ -236,7 +238,7 @@ exports.reviewBook = async (req, res, next) => {
             return res.status(400).json({ message: "هذا الكتاب ليس قيد المراجعة" });
         }
 
-        // Files are already on Google Drive (PDF) + Supabase (cover) — just update status
+        // Prepare updates
         const updateData = {
             publishStatus: action === "approve" ? "approved" : "rejected",
             status: action === "approve" ? "published" : "draft",
@@ -244,6 +246,36 @@ exports.reviewBook = async (req, res, next) => {
             reviewedAt:    new Date(),
             ...(action === "reject" && notes ? { reviewNotes: notes } : {}),
         };
+
+        if (action === "approve") {
+            // Move file to main library folder
+            const mainFolderId = process.env.GOOGLE_BOOKS_FOLDER_ID;
+            const pendingFolderId = process.env.GOOGLE_PENDING_BOOKS_FOLDER_ID;
+            if (book.driveFileId && mainFolderId && pendingFolderId && mainFolderId !== pendingFolderId) {
+                try {
+                    await moveFileInDrive(book.driveFileId, mainFolderId);
+                } catch (err) {
+                    console.error("[reviewBook] Failed to move approved file in Drive:", err.message);
+                }
+            }
+        } else if (action === "reject") {
+            // Delete files to save storage space
+            if (book.driveFileId) {
+                await deleteFromDrive(book.driveFileId).catch(e => console.error(e));
+            }
+            if (book.driveCoverId && book.driveCoverId.startsWith("SUPABASE_")) {
+                const coverPath = book.driveCoverId.replace("SUPABASE_", "");
+                await deleteFromSupabase(coverPath).catch(e => console.error(e));
+            } else if (book.driveCoverId) {
+                await deleteFromDrive(book.driveCoverId).catch(e => console.error(e));
+            }
+            
+            // Clear URLs so we don't serve dead links
+            updateData.driveFileId = null;
+            updateData.fileUrl = null;
+            updateData.driveCoverId = null;
+            updateData.coverImage = null;
+        }
 
         const updatedBook = await Book.findByIdAndUpdate(req.params.id, updateData, { new: true });
 
