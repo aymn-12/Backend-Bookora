@@ -80,6 +80,10 @@ const BookSchema = new mongoose.Schema({
         type: String,
         default: null,
     },
+    pageCount: {
+        type: Number,
+        default: null,
+    },
     downloadCount: {
         type: Number,
         default: 0,
