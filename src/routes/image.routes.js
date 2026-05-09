@@ -60,10 +60,10 @@ router.get("/cover/:fileId", protect, async (req, res) => {
       });
     }
 
-    // 3. Verify file belongs to an approved book
+    // 3. Verify fileId belongs to an approved book (fileId = book's PDF Drive ID, per drive.service.js)
     const book = await Book.findOne({
-      "coverImage.driveCoverId": fileId,
-      publishStatus: "approved"
+      driveFileId: fileId,
+      publishStatus: { $in: ["approved", null] }
     });
 
     if (!book) {
@@ -71,11 +71,20 @@ router.get("/cover/:fileId", protect, async (req, res) => {
       return res.status(404).json({ message: "Image not found or access denied" });
     }
 
-    // 4. Fetch the thumbnail stream from Google Drive
-    // Note: Using 'thumbnailLink' directly often fails due to SameSite cookies.
-    // So we use the drive.files.get with alt: 'media' to get the actual content.
+    // Resolve the actual cover Drive ID
+    // driveCoverId prefixed with "SUPABASE_" means cover is in Supabase — redirect to coverImage URL
+    if (!book.driveCoverId || book.driveCoverId.startsWith("SUPABASE_")) {
+      if (book.coverImage) {
+        return res.redirect(302, book.coverImage); // Supabase public URL
+      }
+      return res.status(404).json({ message: "Cover not found" });
+    }
+
+    const coverFileId = book.driveCoverId;
+
+    // 4. Fetch the cover image stream from Google Drive
     const driveResponse = await drive.files.get(
-      { fileId, alt: "media" },
+      { fileId: coverFileId, alt: "media" },
       { responseType: "stream" }
     );
 
