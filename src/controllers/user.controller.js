@@ -38,9 +38,12 @@ exports.updateName = async (req, res, next) => {
         user.nameChangesCount += 1;
         await user.save();
 
+        // تحديث اسم المؤلف في كل الكتب التي رفعها هذا المستخدم
+        await Book.updateMany({ createdBy: user._id }, { author: name });
+
         res.status(200).json({ 
             success: true, 
-            message: "تم تغيير الاسم بنجاح", 
+            message: "تم تحديث الاسم بنجاح", 
             data: { name: user.name, nameChangesCount: user.nameChangesCount } 
         });
     } catch (error) { next(error); }
