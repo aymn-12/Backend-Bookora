@@ -97,6 +97,23 @@ exports.submitBook = async (req, res, next) => {
         const bookBuffer  = fs.readFileSync(bookFile.path);
         const coverBufferRaw = fs.readFileSync(coverFile.path);
 
+        // ─── Validate File Signatures (Magic Numbers) ─── //
+        if (bookFile.mimetype === "application/pdf") {
+            const isPdf = bookBuffer.slice(0, 5).toString() === "%PDF-";
+            if (!isPdf) {
+                fs.unlinkSync(bookFile.path);
+                fs.unlinkSync(coverFile.path);
+                return res.status(400).json({ success: false, message: "ملف الـ PDF غير صالح أو تم تزييفه" });
+            }
+        } else if (bookFile.mimetype === "application/epub+zip") {
+            const isZip = bookBuffer.slice(0, 4).toString() === "PK\x03\x04";
+            if (!isZip) {
+                fs.unlinkSync(bookFile.path);
+                fs.unlinkSync(coverFile.path);
+                return res.status(400).json({ success: false, message: "ملف الـ EPUB غير صالح أو تم تزييفه" });
+            }
+        }
+
         // ── Duplicate check ───────────────────────────────────────────────
         const fileHash       = generateFileHash(bookBuffer);
         const normalizedTitle = normalizeArabic(title);
@@ -105,6 +122,8 @@ exports.submitBook = async (req, res, next) => {
             $or: [{ fileHash }, { normalizedTitle }],
         });
         if (existingBook) {
+            fs.unlinkSync(bookFile.path);
+            fs.unlinkSync(coverFile.path);
             console.log('[submitBook] Duplicate found:', { 
                 hashMatch: existingBook.fileHash === fileHash, 
                 titleMatch: existingBook.normalizedTitle === normalizedTitle 
@@ -136,14 +155,17 @@ exports.submitBook = async (req, res, next) => {
         const cleanCoverName = `cover-${fileHash}-${Date.now()}.jpg`;
 
         // ── Optimize cover ────────────────────────────────────────────────
-        let coverBuffer = coverBufferRaw;
+        let coverBuffer = null;
         try {
             coverBuffer = await sharp(coverBufferRaw)
                 .resize(600, 900, { fit: 'cover' })
                 .jpeg({ quality: 90 })
                 .toBuffer();
         } catch (e) {
-            console.error('[submitBook] Sharp failed, using original:', e.message);
+            console.error('[submitBook] Sharp failed:', e.message);
+            fs.unlinkSync(bookFile.path);
+            fs.unlinkSync(coverFile.path);
+            return res.status(400).json({ success: false, message: "ملف الغلاف غير صالح أو تالف" });
         }
 
         // ── Upload: PDF → Drive, Cover → Supabase (parallel) ─────────────

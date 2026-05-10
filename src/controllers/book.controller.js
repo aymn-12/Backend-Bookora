@@ -142,7 +142,7 @@ exports.getAllBook = async (req, res) => {
         const skip  = (page - 1) * limit;
 
         const { 
-            category, section, format, sort, mine, createdBy, 
+            category, section, format, sort, mine, createdBy, authorId,
             series, ids, status, publishStatus,
             q, author, minDownloads, maxDownloads,
             dateFrom, dateTo, searchIn
@@ -172,6 +172,10 @@ exports.getAllBook = async (req, res) => {
         } else if (mine === "true" && req.user) {
             matchStage.createdBy = req.user._id;
             delete matchStage.status; // السماح للمالك برؤية مسوداته
+        }
+
+        if (authorId && isValidId(authorId)) {
+            matchStage.authorId = new mongoose.Types.ObjectId(authorId);
         }
 
         // Filter out pending/rejected author books for public queries
@@ -489,6 +493,23 @@ exports.submitUserBook = async (req, res, next) => {
         const bookBuffer      = fs.readFileSync(bookFile.path);
         const coverBufferRaw  = fs.readFileSync(coverFile.path);
 
+        // ─── Validate File Signatures (Magic Numbers) ─── //
+        if (bookFile.mimetype === "application/pdf") {
+            const isPdf = bookBuffer.slice(0, 5).toString() === "%PDF-";
+            if (!isPdf) {
+                fs.unlinkSync(bookFile.path);
+                fs.unlinkSync(coverFile.path);
+                return res.status(400).json({ success: false, message: "ملف الـ PDF غير صالح أو تم تزييفه" });
+            }
+        } else if (bookFile.mimetype === "application/epub+zip") {
+            const isZip = bookBuffer.slice(0, 4).toString() === "PK\x03\x04";
+            if (!isZip) {
+                fs.unlinkSync(bookFile.path);
+                fs.unlinkSync(coverFile.path);
+                return res.status(400).json({ success: false, message: "ملف الـ EPUB غير صالح أو تم تزييفه" });
+            }
+        }
+
         let pageCount = null;
         if (bookFile.mimetype === "application/pdf") {
             try {
@@ -506,6 +527,8 @@ exports.submitUserBook = async (req, res, next) => {
             $or: [{ fileHash }, { normalizedTitle }],
         });
         if (existingBook) {
+            fs.unlinkSync(bookFile.path);
+            fs.unlinkSync(coverFile.path);
             const reason = existingBook.fileHash === fileHash
                 ? "هذا الملف موجود بالفعل"
                 : "هذا الكتاب موجود بالفعل تحت عنوان مشابه";
@@ -526,7 +549,7 @@ exports.submitUserBook = async (req, res, next) => {
         const cleanBookName  = `${title}.${bookExt}`;
         const cleanCoverName = `cover-${fileHash}-${Date.now()}.jpg`;
 
-        let coverBuffer = coverBufferRaw;
+        let coverBuffer = null;
         try {
             coverBuffer = await sharp(coverBufferRaw)
                 .resize(600, 900, { fit: "cover" })
@@ -534,7 +557,9 @@ exports.submitUserBook = async (req, res, next) => {
                 .toBuffer();
         } catch (e) {
             console.error("[submitUserBook] Sharp failed:", e.message);
-            coverBuffer = coverBufferRaw;
+            fs.unlinkSync(bookFile.path);
+            fs.unlinkSync(coverFile.path);
+            return res.status(400).json({ success: false, message: "ملف الغلاف غير صالح أو تالف" });
         }
 
         const pendingFolderId = process.env.GOOGLE_PENDING_BOOKS_FOLDER_ID || process.env.GOOGLE_BOOKS_FOLDER_ID;
@@ -802,7 +827,9 @@ exports.getBookById = async (req, res) => {
         let book = await Book.findById(req.params.id)
             .populate("categories", "name")
             .populate("sections", "name icon description")
-            .populate("series", "name");
+            .populate("series", "name")
+            .populate("authorId", "name image")
+            .populate("createdBy", "name image");
 
         if (!book) return res.status(404).json({ message: "Book not found" });
 

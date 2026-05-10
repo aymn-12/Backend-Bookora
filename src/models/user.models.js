@@ -35,6 +35,10 @@ const UserSchema = new mongoose.Schema({
         type: Boolean, 
         default: false 
     },
+    nameChangesCount: {
+        type: Number,
+        default: 0
+    },
     downloadedBooks: [{ type: mongoose.Schema.Types.ObjectId, ref: "Book" }],
     attempts: { type: Number, default: 0 },
     resetOtp: String,

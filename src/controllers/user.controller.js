@@ -2,6 +2,50 @@ const User = require("../models/user.models");
 const Book = require("../models/book.models");
 const { updateUserInterests } = require("../utils/recommendation.utils");
 
+// ─── Get Public User Profile
+exports.getUserProfile = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select("name profileImage authorSubscription role createdAt")
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+        }
+
+        res.status(200).json({ success: true, data: user });
+    } catch (error) { next(error); }
+};
+
+// ─── Update User Name (Limit 3 times)
+exports.updateName = async (req, res, next) => {
+    try {
+        const { name } = req.body;
+        if (!name) {
+            return res.status(400).json({ success: false, message: "الاسم مطلوب" });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+        }
+
+        if (user.nameChangesCount >= 3) {
+            return res.status(400).json({ success: false, message: "لقد استنفدت الحد الأقصى لتغيير الاسم (3 مرات)" });
+        }
+
+        user.name = name;
+        user.nameChangesCount += 1;
+        await user.save();
+
+        res.status(200).json({ 
+            success: true, 
+            message: "تم تغيير الاسم بنجاح", 
+            data: { name: user.name, nameChangesCount: user.nameChangesCount } 
+        });
+    } catch (error) { next(error); }
+};
+
 // ─── Get Saved Books (المحفوظات)
 exports.getLibrary = async (req, res, next) => {
     try {
