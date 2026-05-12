@@ -215,7 +215,7 @@ exports.getAllBook = async (req, res) => {
             newest:    { createdAt: -1, _id: -1 },
             oldest:    { createdAt: 1, _id: 1 },
             downloads: { downloadCount: -1, _id: -1 },
-            rating:    { bayesianRating: -1, reviewCount: -1, _id: -1 },
+            rating:    { bayesianRating: -1, reviewCount: -1, downloadCount: -1, _id: -1 },
             title:     { title: 1, _id: -1 },
         };
         let sortBy = sortOptions[sort] || sortOptions.newest;
