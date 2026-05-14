@@ -23,6 +23,11 @@ const UserSchema = new mongoose.Schema({
         default: "user", 
         enum: ["user", "admin", "superadmin"] 
     },
+    theme: {
+        type: String,
+        default: "default",
+        enum: ["default", "sepia", "midnight", "royal", "forest", "amoled", "claude", "dark-theme"]
+    },
     
     // الكتب التي قام المستخدم بحفظها (المفضلة/المكتبة الخاصة)
     savedBooks: [{ 

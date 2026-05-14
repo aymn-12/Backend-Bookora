@@ -6,7 +6,7 @@ const { updateUserInterests } = require("../utils/recommendation.utils");
 exports.getUserProfile = async (req, res, next) => {
     try {
         const user = await User.findById(req.params.id)
-            .select("name profileImage authorSubscription role createdAt")
+            .select("name profileImage authorSubscription role createdAt theme")
             .lean();
 
         if (!user) {
@@ -45,6 +45,35 @@ exports.updateName = async (req, res, next) => {
             success: true, 
             message: "تم تحديث الاسم بنجاح", 
             data: { name: user.name, nameChangesCount: user.nameChangesCount } 
+        });
+    } catch (error) { next(error); }
+};
+
+// ─── Update User Theme
+exports.updateTheme = async (req, res, next) => {
+    try {
+        const { theme } = req.body;
+        if (!theme) {
+            return res.status(400).json({ success: false, message: "الثيم مطلوب" });
+        }
+
+        const validThemes = ["default", "sepia", "midnight", "royal", "forest", "amoled", "claude", "dark-theme"];
+        if (!validThemes.includes(theme)) {
+            return res.status(400).json({ success: false, message: "الثيم غير صالح" });
+        }
+
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+        }
+
+        user.theme = theme;
+        await user.save();
+
+        res.status(200).json({ 
+            success: true, 
+            message: "تم تحديث الثيم بنجاح", 
+            data: { theme: user.theme } 
         });
     } catch (error) { next(error); }
 };

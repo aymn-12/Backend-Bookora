@@ -808,6 +808,13 @@ exports.confirmDownload = async (req, res, next) => {
         book.downloadCount += 1;
         await book.save();
 
+        const DownloadHistory = require("../models/downloadHistory.models");
+        await DownloadHistory.create({
+            book: book._id,
+            user: req.user ? req.user._id : null,
+            date: new Date()
+        });
+
         if (req.user) {
             const User = require("../models/user.models");
             await User.findByIdAndUpdate(req.user._id, {

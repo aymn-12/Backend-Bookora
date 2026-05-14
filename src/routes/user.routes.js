@@ -13,6 +13,7 @@ const libraryLimiter = rateLimit({
 
 router.get("/profile/:id", optionalAuth, userCtrl.getUserProfile);
 router.patch("/profile/name", authMiddleware, verifiedMiddleware, userCtrl.updateName);
+router.patch("/profile/theme", authMiddleware, verifiedMiddleware, userCtrl.updateTheme);
 router.get("/library",          libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.getLibrary);
 router.post("/library/:bookId", libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.addToLibrary);
 router.post("/library-sync",   libraryLimiter, authMiddleware, verifiedMiddleware, userCtrl.syncLibrary);

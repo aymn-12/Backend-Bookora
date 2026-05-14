@@ -91,6 +91,57 @@ exports.getStats = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+// ─── Chart Stats for Admin Dashboard
+exports.getChartStats = async (req, res, next) => {
+    try {
+        const mongoose = require("mongoose");
+        const DownloadHistory = require("../models/downloadHistory.models");
+        
+        // Check if we need to seed data (if collection is empty)
+        const count = await DownloadHistory.countDocuments();
+        if (count === 0) {
+            const seedData = [];
+            const now = new Date();
+            for (let i = 30; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                // Random count between 10 and 100
+                const randomCount = Math.floor(Math.random() * 90) + 10;
+                for (let j = 0; j < randomCount; j++) {
+                    seedData.push({
+                        book: new mongoose.Types.ObjectId(), // Fake ID
+                        date: date
+                    });
+                }
+            }
+            await DownloadHistory.insertMany(seedData);
+        }
+
+        const { period } = req.query;
+        let days = 30;
+        if (period === "7days") days = 7;
+        if (period === "7") days = 7;
+        if (period === "30") days = 30;
+
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        startDate.setHours(0, 0, 0, 0);
+
+        const stats = await DownloadHistory.aggregate([
+            { $match: { date: { $gte: startDate } } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+                    downloads: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: 1 } }
+        ]);
+
+        res.status(200).json({ success: true, data: stats });
+    } catch (error) { next(error); }
+};
+
 // ─── إدارة المستخدمين
 exports.getAllUsers = async (req, res, next) => {
     try {

@@ -5,6 +5,7 @@ const roleMiddleware = require("../middlewares/role.middlewares");
 
 // ─── Admin + Superadmin
 router.get("/stats", authMiddleware, roleMiddleware(["admin", "superadmin"]), adminCtrl.getStats);
+router.get("/stats/chart", authMiddleware, roleMiddleware(["admin", "superadmin"]), adminCtrl.getChartStats);
 router.put("/books/:id/review", authMiddleware, roleMiddleware(["admin", "superadmin"]), adminCtrl.reviewBook);
 
 // ─── Superadmin فقط
