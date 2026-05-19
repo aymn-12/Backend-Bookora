@@ -47,7 +47,7 @@ exports.getSeriesById = async (req, res, next) => {
         const books = await Book.find({ series: series._id })
             .sort({ seriesOrder: 1 })
             .populate("categories", "name")
-            .select("title author coverImage format seriesOrder downloadCount");
+            .select("title author coverImage format seriesOrder downloadCount pageCount");
 
         res.status(200).json({ success: true, data: { series, books } });
     } catch (error) { next(error); }

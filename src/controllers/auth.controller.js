@@ -57,10 +57,13 @@ exports.register = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "هذا البريد الإلكتروني مسجل مسبقاً" });
 
     // Generate a random User ID for the name field
+
+
     const generatedName = "BKR-" + crypto.randomInt(100000, 999999).toString();
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10); // 10 is the salt rounds
     const otp = generateOTP();
 
+    
     await PendingUser.create({
       name: generatedName, // Save generated ID
       email,
